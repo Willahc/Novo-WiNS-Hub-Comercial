@@ -1,0 +1,45 @@
+services:
+  winshub:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: winshub:latest
+    restart: unless-stopped
+    command:
+      - "-web"
+      - "-addr"
+      - ":8080"
+      - "-data-folder"
+      - "/data"
+      - "-c"
+      - "2"
+    environment:
+      # Nao envia estatisticas de uso para o autor do projeto original.
+      - DISABLE_TELEMETRY=1
+    volumes:
+      - winshub_data:/data
+    # Chromium usa /dev/shm; sem isso ele trava em buscas maiores.
+    shm_size: "1gb"
+    expose:
+      - "8080"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    env_file:
+      - caddy.env
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - winshub
+
+volumes:
+  winshub_data:
+  caddy_data:
+  caddy_config:

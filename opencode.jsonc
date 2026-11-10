@@ -1,0 +1,18 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  // Registra a agência completa (skills + pdf oficial da Anthropic) neste workspace
+  "skills": ["./agencia-ia/skills"],
+  // harken: transcrição de áudio 100% local (whisper.cpp embutido, offline).
+  // Permite transcrever áudios/mensagens de voz de clientes durante a sessão.
+  // Modelo é baixado no primeiro uso (ou rode: harken warm).
+  "mcp": {
+    "harken": {
+      "type": "local",
+      "command": [
+        "C:/Users/kbadmin/Downloads/mazyos-scraper-1.0.0/mazyos-scraper-1.0.0/agencia-ia/tools/harken/harken.exe",
+        "mcp"
+      ],
+      "enabled": true
+    }
+  }
+}

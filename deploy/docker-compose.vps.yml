@@ -1,0 +1,28 @@
+services:
+  winshub:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: winshub:latest
+    restart: unless-stopped
+    command:
+      - "-web"
+      - "-addr"
+      - ":8080"
+      - "-data-folder"
+      - "/data"
+      - "-c"
+      - "${WINSHUB_CONCURRENCY:-2}"
+    environment:
+      - DISABLE_TELEMETRY=1
+    volumes:
+      - winshub_data:/data
+    # Chromium usa /dev/shm; sem isso ele trava em buscas maiores.
+    shm_size: "1gb"
+    # Exposto apenas no loopback: quem fala com a internet, faz o HTTPS e o
+    # basic_auth e o Nginx que ja roda nesse servidor.
+    ports:
+      - "127.0.0.1:8080:8080"
+
+volumes:
+  winshub_data:

@@ -1,0 +1,6 @@
+[Unit]
+Description=Ativa HTTPS do WiNS Hub quando o DNS apontar para este servidor
+
+[Service]
+Type=oneshot
+ExecStart=/opt/winshub/deploy/ativar-https.sh

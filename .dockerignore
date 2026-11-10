@@ -1,0 +1,13 @@
+.git
+.github
+.cache
+bin
+tmp
+webdata
+*.exe
+coverage.out
+coverage.html
+agencia-ia
+docs
+skills
+examples

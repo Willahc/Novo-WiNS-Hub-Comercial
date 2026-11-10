@@ -1,0 +1,9 @@
+[Unit]
+Description=Verifica o DNS a cada 10 min e emite o certificado quando possivel
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=10min
+
+[Install]
+WantedBy=timers.target

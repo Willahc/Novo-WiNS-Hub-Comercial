@@ -1,0 +1,17 @@
+# HTTPS e certificado sao obtidos automaticamente pelo Caddy.
+# O painel do WiNS Hub nao tem login proprio, por isso o basic_auth abaixo
+# e obrigatorio: sem ele qualquer pessoa na internet usaria o seu servidor.
+
+www.winshubcomercial.com.br {
+	redir https://winshubcomercial.com.br{uri} permanent
+}
+
+winshubcomercial.com.br {
+	encode zstd gzip
+
+	basic_auth {
+		{$BASIC_AUTH_USER} {$BASIC_AUTH_HASH}
+	}
+
+	reverse_proxy winshub:8080
+}

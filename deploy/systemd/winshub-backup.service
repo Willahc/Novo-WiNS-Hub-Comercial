@@ -1,0 +1,6 @@
+[Unit]
+Description=Backup do volume de dados do WiNS Hub
+
+[Service]
+Type=oneshot
+ExecStart=/opt/winshub/deploy/backup.sh
