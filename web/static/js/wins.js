@@ -514,9 +514,14 @@
         if (key === 'borough') return (p.borough || '').toLowerCase();
         if (key === 'rating') return (Number(p.review_rating || 0) * 100000) + Number(p.review_count || 0);
         if (key === 'phone') return (whatsapp(p.phone) ? '2_' : (p.phone ? '1_' : '0_')) + (p.phone || '');
+        if (key === 'instagram') {
+            var ig = instagramHandle(p.website);
+            return ig ? ('1_' + ig.toLowerCase()) : '0_';
+        }
         if (key === 'site') {
             var k = siteKind(p.website);
-            var rank = k === 'none' ? '0_' : (k === 'social' ? '1_' : '2_');
+            var isIg = !!instagramHandle(p.website);
+            var rank = (k === 'none' || isIg) ? '0_' : (k === 'social' ? '1_' : '2_');
             return rank + domain(p.website || '').toLowerCase();
         }
         return '';
@@ -596,7 +601,7 @@
             $('selectAllRows').indeterminate = picked.length > 0 && picked.length < rows.length;
         }
         if (!rows.length) {
-            $('rows').innerHTML = '<tr><td colspan="7" class="t-empty">' +
+            $('rows').innerHTML = '<tr><td colspan="8" class="t-empty">' +
                 (all.length ? 'Nenhuma empresa nesse filtro.' : (running ? 'As empresas aparecem aqui conforme a busca anda.' : 'Essa busca não trouxe empresas.')) +
                 '</td></tr>';
             return;
@@ -606,10 +611,14 @@
             var checked = state.selectedKeys[pk] ? ' checked' : '';
             var k = siteKind(p.website);
             var ig = instagramHandle(p.website);
-            var site = k === 'none' ? '<span class="tag dark">Sem site</span>'
-                : ig ? '<a class="t-site" href="' + esc(p.website) + '" target="_blank" rel="noopener">' + esc(ig) + '</a><span class="tag">Instagram</span>'
-                : '<a class="t-site" href="' + esc(p.website) + '" target="_blank" rel="noopener">' + esc(domain(p.website)) + '</a>' +
-                  (k === 'social' ? '<span class="tag">Rede social</span>' : '');
+            var igCell = ig
+                ? '<a class="t-site" href="' + esc(p.website) + '" target="_blank" rel="noopener">' + esc(ig) + '</a>'
+                : '<span class="t-cat">—</span>';
+            var site = (k === 'none' || ig)
+                ? '<span class="tag dark">Sem site</span>'
+                : (k === 'social'
+                    ? '<a class="t-site" href="' + esc(p.website) + '" target="_blank" rel="noopener">' + esc(domain(p.website)) + '</a><span class="tag">Rede social</span>'
+                    : '<a class="t-site" href="' + esc(p.website) + '" target="_blank" rel="noopener">' + esc(domain(p.website)) + '</a>');
             var wa = whatsapp(p.phone);
             var phone = !p.phone ? '<span class="t-cat">sem telefone</span>'
                 : wa ? '<a class="mono" href="https://wa.me/' + wa + '" target="_blank" rel="noopener">' + esc(p.phone) + '</a><span class="wa">WHATS</span>'
@@ -620,6 +629,7 @@
                 '<td>' + esc(p.borough) + '</td>' +
                 '<td class="num">' + (p.review_rating ? '★ ' + rating(p.review_rating) + ' <span class="t-cat">(' + int(p.review_count) + ')</span>' : '') + '</td>' +
                 '<td>' + phone + '</td>' +
+                '<td>' + igCell + '</td>' +
                 '<td>' + site + '</td>' +
                 '<td>' + (p.link ? '<a href="' + esc(p.link) + '" target="_blank" rel="noopener" title="Abrir no Google Maps">' + ICON.arrow + '</a>' : '') + '</td>' +
                 '</tr>';
@@ -906,7 +916,7 @@
         }
 
         if (!list.length) {
-            $('crmRows').innerHTML = '<tr><td colspan="7" class="t-empty">Nenhum lead nessa etapa.</td></tr>';
+            $('crmRows').innerHTML = '<tr><td colspan="9" class="t-empty">Nenhum lead nessa etapa.</td></tr>';
             return;
         }
 
@@ -914,11 +924,20 @@
         $('crmRows').innerHTML = list.map(function (l) {
             var checked = crmState.selectedKeys[l.key] ? ' checked' : '';
             var stLabel = ST_LABELS[l.state] || l.state;
+            var siteStr = String(l.site || '').trim();
+            var siteIsSocial = siteKind(siteStr) === 'social';
+            var igHandle = l.instagram || instagramHandle(siteStr);
+            var igUrl = l.instagramUrl || (instagramHandle(siteStr) ? siteStr : '');
+            var igCol = igHandle
+                ? '<a class="t-site" href="' + esc(igUrl) + '" target="_blank" rel="noopener">' + esc(igHandle) + '</a>'
+                : '<span class="t-cat">—</span>';
+            var hasRealSite = l.temSite && siteStr && !siteIsSocial;
+            var siteCol = hasRealSite
+                ? '<a class="t-site" href="' + esc(/^https?:\/\//i.test(siteStr) ? siteStr : ('https://' + siteStr)) + '" target="_blank" rel="noopener">' + esc(domain(siteStr)) + '</a>'
+                : '<span class="tag dark">Sem site</span>';
             var metaBadges = [
-                '<span class="crm-meta-chip">★ ' + l.score + ' · ' + int(l.avaliacoes) + ' aval.</span>',
-                '<span class="crm-meta-chip">' + (l.temSite ? 'Com site' : 'Sem site') + '</span>'
+                '<span class="crm-meta-chip">★ ' + l.score + ' · ' + int(l.avaliacoes) + ' aval.</span>'
             ];
-            if (l.instagram) metaBadges.push('<a class="crm-meta-chip link" href="' + esc(l.instagramUrl) + '" target="_blank" rel="noopener">' + esc(l.instagram) + '</a>');
             if (l.siteAudit) {
                 metaBadges.push('<span class="crm-meta-chip' + (l.siteAudit.score < 70 ? ' warn' : ' ok') + '">Site ' + l.siteAudit.score + '/100</span>');
                 if (l.siteAudit.stack && l.siteAudit.stack.length) metaBadges.push('<span class="crm-meta-chip">' + esc(l.siteAudit.stack[0]) + '</span>');
@@ -931,6 +950,8 @@
                 '<td class="chk-col"><input type="checkbox" class="crm-chk" data-key="' + esc(l.key) + '"' + checked + '></td>' +
                 '<td><div class="t-name"><button type="button" class="crm-lead-btn" ' + chatAttrs + '>' + esc(l.nome) + '</button></div><div class="crm-sub-meta">' + metaBadges.join('') + '</div></td>' +
                 '<td><div class="crm-niche-main">' + esc(l.nicho) + '</div><div class="t-cat">' + esc(l.cidade) + '</div></td>' +
+                '<td>' + igCol + '</td>' +
+                '<td>' + siteCol + '</td>' +
                 '<td><span class="st-pill st-' + esc(l.state) + '">' + esc(stLabel) + '</span></td>' +
                 '<td><button type="button" class="crm-chat-btn" ' + chatAttrs + '>💬 ' + l.msgCount + '</button></td>' +
                 '<td><a class="crm-prev-link" href="' + esc(l.previewUrl) + '" target="_blank" rel="noopener">Prévia ↗</a></td>' +
