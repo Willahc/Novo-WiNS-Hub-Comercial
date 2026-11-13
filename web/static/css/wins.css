@@ -576,21 +576,21 @@ td a:hover { text-decoration: underline; }
 
 /* CRM nativo (mesmo padrão visual do WiNS Hub) */
 
-#crmView .board-main { overflow-y: auto; }
-#crmView .stats {
+#crmView .board-main, #dashView .board-main { overflow-y: auto; }
+#crmView .stats, #dashView .stats {
     background: transparent;
     border: none;
     gap: 10px;
     overflow: visible;
 }
-#crmView .stat {
+#crmView .stat, #dashView .stat {
     background: linear-gradient(145deg, #2e3440 0%, #1f242d 58%, #262c37 100%);
     border: 1px solid #3d4556;
     border-radius: 12px;
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.09), 0 4px 14px rgba(0, 0, 0, 0.26);
     padding: 15px 18px;
 }
-#crmView .table-wrap {
+#crmView .table-wrap, #dashView .table-wrap {
     flex: none;
     overflow-x: auto;
     overflow-y: visible;
@@ -602,7 +602,7 @@ td a:hover { text-decoration: underline; }
     border-radius: 12px;
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 6px 18px rgba(0, 0, 0, 0.28);
 }
-#crmView .table-wrap thead th {
+#crmView .table-wrap thead th, #dashView .table-wrap thead th {
     background: linear-gradient(180deg, #2c323e 0%, #222731 100%);
     border-bottom: 1px solid #3d4556;
     padding: 12px 14px;
@@ -611,8 +611,29 @@ td a:hover { text-decoration: underline; }
     letter-spacing: .04em;
     color: #cbd5e1;
 }
-#crmView .table-wrap tbody td { padding: 12px 14px; vertical-align: middle; border-bottom: 1px solid rgba(148, 163, 184, 0.12); }
-#crmView .table-wrap tbody tr:hover { background: rgba(255, 255, 255, 0.04); }
+#crmView .table-wrap tbody td, #dashView .table-wrap tbody td { padding: 12px 14px; vertical-align: middle; border-bottom: 1px solid rgba(148, 163, 184, 0.12); }
+#crmView .table-wrap tbody tr:hover, #dashView .table-wrap tbody tr:hover { background: rgba(255, 255, 255, 0.04); }
+
+.dash-panels { grid-template-columns: 1fr 1fr; }
+.dash-bars { display: flex; flex-direction: column; gap: 10px; }
+.dash-bar-row { display: flex; flex-direction: column; gap: 4px; }
+.dash-bar-head { display: flex; justify-content: space-between; font-size: 12px; color: #e2e8f0; gap: 8px; }
+.dash-bar-head span:last-child { color: var(--muted); font-family: var(--mono); font-size: 11.5px; white-space: nowrap; }
+.dash-bar-track { height: 7px; border-radius: 999px; background: rgba(148, 163, 184, 0.14); overflow: hidden; }
+.dash-bar-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, #60a5fa, #34d399); transition: width .25s ease; }
+.dash-tools { flex-wrap: wrap; gap: 10px; }
+.dash-selects { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.dash-select {
+    height: 36px;
+    padding: 0 10px;
+    border-radius: 9px;
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    color: var(--ink);
+    font-size: 12.5px;
+    font-family: inherit;
+    max-width: 210px;
+}
 
 .crm-sub-meta {
     display: flex;
@@ -1074,19 +1095,20 @@ td a:hover { text-decoration: underline; }
     .board-main { overflow-y: auto; -webkit-overflow-scrolling: touch; }
 
     /* Tabelas viram cards nativos no Android */
-    .table-wrap, #crmView .table-wrap { flex: none; margin: 0; padding: 4px 16px 24px; background: transparent; border: none; border-radius: 0; overflow: visible; }
+    .table-wrap, #crmView .table-wrap, #dashView .table-wrap { flex: none; margin: 0; padding: 4px 16px 24px; background: transparent; border: none; border-radius: 0; overflow: visible; }
     #board table, #board tbody,
-    #crmView .table-wrap table, #crmView .table-wrap tbody {
+    #crmView .table-wrap table, #crmView .table-wrap tbody,
+    #dashView .table-wrap table, #dashView .table-wrap tbody {
         display: block;
         width: 100%;
     }
-    #board thead, #crmView .table-wrap thead { display: none; }
-    #board tbody, #crmView .table-wrap tbody {
+    #board thead, #crmView .table-wrap thead, #dashView .table-wrap thead { display: none; }
+    #board tbody, #crmView .table-wrap tbody, #dashView .table-wrap tbody {
         display: flex;
         flex-direction: column;
         gap: 10px;
     }
-    #board tbody tr, #crmView .table-wrap tbody tr {
+    #board tbody tr, #crmView .table-wrap tbody tr, #dashView .table-wrap tbody tr {
         display: grid;
         grid-template-columns: 28px 1fr;
         gap: 6px 10px;
@@ -1096,7 +1118,7 @@ td a:hover { text-decoration: underline; }
         border-radius: 14px;
         padding: 14px;
     }
-    #board tbody td, #crmView .table-wrap tbody td {
+    #board tbody td, #crmView .table-wrap tbody td, #dashView .table-wrap tbody td {
         grid-column: 2;
         border: none;
         padding: 0;
@@ -1106,6 +1128,8 @@ td a:hover { text-decoration: underline; }
         gap: 6px;
         text-align: left;
     }
+    .dash-panels { grid-template-columns: 1fr; margin: 12px 16px 0; }
+    .dash-select { max-width: 100%; flex: 1 1 140px; }
     #board tbody td.chk-col, #crmView .table-wrap tbody td.chk-col {
         grid-column: 1;
         grid-row: 1 / span 4;

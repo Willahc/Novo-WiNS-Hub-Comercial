@@ -731,9 +731,11 @@
         }
         $('board').hidden = v !== 'board';
         if ($('crmView')) $('crmView').hidden = v !== 'crm';
+        if ($('dashView')) $('dashView').hidden = v !== 'dash';
         renderLive();
         if (v === 'board') renderBoard();
         if (v === 'crm') loadCrm();
+        if (v === 'dash') loadDash(false);
     }
     segmented('viewSeg', 'data-view', setView);
     if ($('mobileNav')) segmented('mobileNav', 'data-view', setView);
@@ -1194,6 +1196,321 @@
                     input.value = '';
                     loadCrm();
                 });
+        });
+    }
+
+    // ---------- Dashboards (Todos os Clientes + Próximos) ----------
+
+    var dashState = { stage: 'all', job: 'all', digital: 'all', text: '', rows: [], jobCache: {}, loading: false };
+
+    function dashNormKey(title, phone, city) {
+        var digits = String(phone || '').replace(/\D/g, '');
+        if (digits.length >= 10) return 'p:' + digits.slice(-10);
+        return 't:' + String(title || '').toLowerCase().replace(/[^a-z0-9]/g, '') + '|' + String(city || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    }
+
+    function dashStatusBadge(st) {
+        var map = {
+            mapeado: { label: 'Mapeado', cls: 'dark' },
+            na_fila: { label: 'Próximo (Na fila)', cls: 'warn' },
+            enviado: { label: 'Enviado', cls: '' },
+            visualizado: { label: 'Visualizado', cls: '' },
+            respondeu: { label: 'Respondeu', cls: 'ok' },
+            proposto: { label: 'Proposto', cls: 'ok' },
+            fechado: { label: 'Fechado', cls: 'ok' },
+            descartado: { label: 'Descartado', cls: 'dark' }
+        };
+        var info = map[st] || { label: st || 'Mapeado', cls: 'dark' };
+        return '<span class="tag ' + info.cls + '">' + esc(info.label) + '</span>';
+    }
+
+    function loadDash(force) {
+        if (!$('dashView') || dashState.loading) return Promise.resolve();
+        dashState.loading = true;
+        if ($('dashMeta')) $('dashMeta').textContent = 'Sincronizando buscas do Maps e CRM...';
+
+        var jobsReady = (state.jobs && state.jobs.length) ? Promise.resolve(state.jobs) : loadJobs().then(function () { return state.jobs || []; });
+
+        return jobsReady.then(function (jobs) {
+            var completed = (jobs || []).filter(function (j) { return j.Status === 'ok' || j.Status === 'working'; });
+            var jobFetches = completed.map(function (j) {
+                if (!force && dashState.jobCache[j.ID]) return Promise.resolve({ job: j, places: dashState.jobCache[j.ID] });
+                return fetch('/api/v1/jobs/' + encodeURIComponent(j.ID) + '/download')
+                    .then(function (r) { return r.ok ? r.text() : ''; })
+                    .then(function (csv) {
+                        var places = csv ? parseCsv(csv).map(rowToPlace) : [];
+                        dashState.jobCache[j.ID] = places;
+                        return { job: j, places: places };
+                    })
+                    .catch(function () { return { job: j, places: [] }; });
+            });
+
+            var crmFetch = fetch('/api/crm/overview')
+                .then(function (r) { return r.ok ? r.json() : null; })
+                .catch(function () { return null; });
+
+            return Promise.all([Promise.all(jobFetches), crmFetch]);
+        }).then(function (pair) {
+            var jobResults = pair[0] || [];
+            var crm = pair[1];
+            var byKey = {};
+            var order = [];
+
+            jobResults.forEach(function (entry) {
+                var j = entry.job;
+                entry.places.forEach(function (p) {
+                    var key = dashNormKey(p.title, p.phone, p.city);
+                    if (byKey[key]) return;
+                    var sk = siteKind(p.website);
+                    var ig = instagramHandle(p.website);
+                    var wa = whatsappNumber(p.phone);
+                    var row = {
+                        title: p.title || '',
+                        category: p.category || '',
+                        city: p.city || p.borough || '',
+                        source: j.Name || 'Busca Maps',
+                        jobId: j.ID,
+                        phone: p.phone || '',
+                        wa: wa,
+                        instagram: ig,
+                        instagramUrl: ig ? ('https://www.instagram.com/' + ig.replace(/^@/, '') + '/') : '',
+                        website: sk === 'site' ? p.website : '',
+                        rawSite: p.website || '',
+                        siteKind: sk,
+                        emails: p.emails || '',
+                        rating: Number(p.rating) || 0,
+                        reviews: Number(p.reviews) || 0,
+                        crmState: 'mapeado',
+                        link: p.link || ''
+                    };
+                    byKey[key] = row;
+                    order.push(row);
+                });
+            });
+
+            if (crm && Array.isArray(crm.leads)) {
+                crm.leads.forEach(function (l) {
+                    var key = dashNormKey(l.nome, l.telefone, l.cidade);
+                    var sk = l.temSite && l.site && !/instagram\.com|facebook\.com|linktr\.ee|wa\.me|whatsapp\.com|tiktok\.com/i.test(l.site)
+                        ? 'site'
+                        : (/instagram\.com|facebook\.com|linktr\.ee|wa\.me|whatsapp\.com|tiktok\.com/i.test(l.site || '') ? 'social' : 'none');
+                    var ig = l.instagram || instagramHandle(l.site);
+                    var igUrl = l.instagramUrl || (ig ? ('https://www.instagram.com/' + ig.replace(/^@/, '') + '/') : '');
+                    var wa = whatsappNumber(l.telefone);
+                    if (byKey[key]) {
+                        var existing = byKey[key];
+                        existing.crmState = l.state || 'na_fila';
+                        if (ig && !existing.instagram) {
+                            existing.instagram = ig;
+                            existing.instagramUrl = igUrl;
+                        }
+                        if (l.avaliacoes && !existing.reviews) existing.reviews = l.avaliacoes;
+                    } else {
+                        var row = {
+                            title: l.nome || '',
+                            category: l.nicho || '',
+                            city: l.cidade || '',
+                            source: 'CRM',
+                            jobId: 'crm',
+                            phone: l.telefone || '',
+                            wa: wa,
+                            instagram: ig,
+                            instagramUrl: igUrl,
+                            website: sk === 'site' ? l.site : '',
+                            rawSite: l.site || '',
+                            siteKind: sk,
+                            emails: l.email || '',
+                            rating: 0,
+                            reviews: Number(l.avaliacoes) || 0,
+                            crmState: l.state || 'na_fila',
+                            link: ''
+                        };
+                        byKey[key] = row;
+                        order.push(row);
+                    }
+                });
+            }
+
+            dashState.rows = order;
+            populateDashJobs(jobResults);
+            renderDash();
+        }).finally(function () {
+            dashState.loading = false;
+        });
+    }
+
+    function populateDashJobs(jobResults) {
+        var sel = $('dashJobFilter');
+        if (!sel) return;
+        var prev = dashState.job || 'all';
+        var opts = '<option value="all">Todas as buscas (' + (jobResults.length + 1) + ')</option>';
+        opts += '<option value="crm">Somente no CRM</option>';
+        jobResults.forEach(function (entry) {
+            opts += '<option value="' + esc(entry.job.ID) + '">' + esc(entry.job.Name) + ' (' + entry.places.length + ')</option>';
+        });
+        sel.innerHTML = opts;
+        sel.value = prev;
+        if (sel.value !== prev) { sel.value = 'all'; dashState.job = 'all'; }
+    }
+
+    function dashFilteredRows() {
+        var q = dashState.text.trim().toLowerCase();
+        return dashState.rows.filter(function (r) {
+            if (dashState.stage === 'proximo' && r.crmState !== 'na_fila') return false;
+            if (dashState.stage === 'mapeado' && r.crmState !== 'mapeado') return false;
+            if (dashState.stage === 'enviado' && r.crmState !== 'enviado' && r.crmState !== 'visualizado') return false;
+            if (dashState.stage === 'respondeu' && r.crmState !== 'respondeu' && r.crmState !== 'proposto') return false;
+            if (dashState.stage === 'fechado' && r.crmState !== 'fechado') return false;
+
+            if (dashState.job === 'crm' && r.crmState === 'mapeado') return false;
+            if (dashState.job !== 'all' && dashState.job !== 'crm' && r.jobId !== dashState.job) return false;
+
+            if (dashState.digital === 'nosite' && r.siteKind === 'site') return false;
+            if (dashState.digital === 'social' && r.siteKind !== 'social') return false;
+            if (dashState.digital === 'site' && r.siteKind !== 'site') return false;
+            if (dashState.digital === 'ig' && !r.instagram) return false;
+            if (dashState.digital === 'noig' && !!r.instagram) return false;
+            if (dashState.digital === 'whats' && !r.wa) return false;
+            if (dashState.digital === 'email' && !r.emails) return false;
+
+            if (q) {
+                var hay = (r.title + ' ' + r.category + ' ' + r.city + ' ' + r.phone + ' ' + r.instagram + ' ' + r.source).toLowerCase();
+                if (hay.indexOf(q) === -1) return false;
+            }
+            return true;
+        });
+    }
+
+    function renderDashBars(containerId, items, totalBase) {
+        var el = $(containerId);
+        if (!el) return;
+        var base = Math.max(1, totalBase || 1);
+        el.innerHTML = items.map(function (it) {
+            var pct = Math.min(100, Math.round((it.count / base) * 100));
+            return '<div class="dash-bar-row">' +
+                '<div class="dash-bar-head"><span>' + esc(it.label) + '</span><span>' + it.count + ' (' + pct + '%)</span></div>' +
+                '<div class="dash-bar-track"><div class="dash-bar-fill" style="width:' + pct + '%"></div></div>' +
+                '</div>';
+        }).join('') || '<div class="muted">Sem dados ainda.</div>';
+    }
+
+    function renderDash() {
+        var all = dashState.rows;
+        var total = all.length;
+        var proximos = all.filter(function (r) { return r.crmState === 'na_fila'; }).length;
+        var noCrm = all.filter(function (r) { return r.crmState !== 'mapeado'; }).length;
+        var enviados = all.filter(function (r) { return ['enviado', 'visualizado', 'respondeu', 'proposto', 'fechado'].indexOf(r.crmState) !== -1; }).length;
+        var responderam = all.filter(function (r) { return ['respondeu', 'proposto', 'fechado'].indexOf(r.crmState) !== -1; }).length;
+        var fechados = all.filter(function (r) { return r.crmState === 'fechado'; }).length;
+        var semSite = all.filter(function (r) { return r.siteKind !== 'site'; }).length;
+        var comWhats = all.filter(function (r) { return !!r.wa; }).length;
+        var comIg = all.filter(function (r) { return !!r.instagram; }).length;
+
+        if ($('dashMeta')) {
+            $('dashMeta').textContent = total + ' empresas únicas mapeadas · ' + noCrm + ' no CRM · ' + proximos + ' próximos na fila';
+        }
+        if ($('dashStats')) {
+            $('dashStats').innerHTML = [
+                { v: total, l: 'Total Mapeado' },
+                { v: proximos, l: 'Próximos (Fila)' },
+                { v: semSite + ' (' + (total ? Math.round((semSite / total) * 100) : 0) + '%)', l: 'Sem Site Próprio' },
+                { v: comWhats, l: 'Com WhatsApp' },
+                { v: comIg, l: 'Com Instagram' },
+                { v: enviados + ' / ' + fechados, l: 'Env. / Fechados' }
+            ].map(function (s) {
+                return '<div class="stat"><div class="stat-v">' + s.v + '</div><div class="stat-l">' + s.l + '</div></div>';
+            }).join('');
+        }
+
+        renderDashBars('dashFunnel', [
+            { label: 'Mapeados no Google Maps + CRM', count: total },
+            { label: 'Importados para o CRM', count: noCrm },
+            { label: 'Próximos a prospectar (Na fila)', count: proximos },
+            { label: 'Mensagens enviadas', count: enviados },
+            { label: 'Responderam / Proposta', count: responderam },
+            { label: 'Fechados', count: fechados }
+        ], total);
+
+        var bySource = {};
+        all.forEach(function (r) {
+            var k = r.source || 'Outros';
+            bySource[k] = (bySource[k] || 0) + 1;
+        });
+        var topSources = Object.keys(bySource).map(function (k) {
+            return { label: k, count: bySource[k] };
+        }).sort(function (a, b) { return b.count - a.count; }).slice(0, 6);
+        renderDashBars('dashNiches', topSources, total);
+
+        var rows = dashFilteredRows();
+        var visible = rows.slice(0, 250);
+        if (!$('dashRows')) return;
+        $('dashRows').innerHTML = visible.map(function (r) {
+            var telCell = r.wa
+                ? '<a class="link" target="_blank" rel="noopener" href="https://wa.me/' + r.wa + '">' + esc(r.phone) + '</a>'
+                : (r.phone ? '<span>' + esc(r.phone) + '</span>' : '<span class="muted">—</span>');
+            var igCell = r.instagram
+                ? '<a class="link" target="_blank" rel="noopener" href="' + esc(r.instagramUrl) + '">' + esc(r.instagram) + '</a>'
+                : '<span class="muted">—</span>';
+            var siteCell = r.website
+                ? '<a class="link" target="_blank" rel="noopener" href="' + esc(r.website) + '">' + esc(domain(r.website)) + '</a>'
+                : '<span class="tag dark">Sem site</span>';
+            var notaCell = r.rating ? (r.rating.toFixed(1) + ' ★ (' + r.reviews + ')') : (r.reviews ? (r.reviews + ' aval.') : '—');
+            return '<tr>' +
+                '<td><div class="t-name">' + esc(r.title) + '</div><div class="t-sub">' + esc([r.category, r.city].filter(Boolean).join(' · ')) + '</div></td>' +
+                '<td><div class="t-sub">' + esc(r.source) + '</div></td>' +
+                '<td>' + telCell + '</td>' +
+                '<td>' + igCell + '</td>' +
+                '<td>' + siteCell + '</td>' +
+                '<td class="num">' + esc(notaCell) + '</td>' +
+                '<td>' + dashStatusBadge(r.crmState) + '</td>' +
+                '</tr>';
+        }).join('') || '<tr><td colspan="7" class="empty-row">Nenhum cliente encontrado com esses filtros.</td></tr>';
+
+        if (rows.length > 250) {
+            $('dashRows').innerHTML += '<tr><td colspan="7" class="empty-row">Mostrando 250 de ' + rows.length + ' clientes filtrados. Use os filtros ou clique em <b>Exportar CSV</b> para ver todos.</td></tr>';
+        }
+    }
+
+    if ($('dashStageFilters')) {
+        segmented('dashStageFilters', 'data-df', function (v) {
+            dashState.stage = v;
+            renderDash();
+        });
+    }
+    if ($('dashJobFilter')) {
+        $('dashJobFilter').addEventListener('change', function () {
+            dashState.job = this.value;
+            renderDash();
+        });
+    }
+    if ($('dashDigitalFilter')) {
+        $('dashDigitalFilter').addEventListener('change', function () {
+            dashState.digital = this.value;
+            renderDash();
+        });
+    }
+    if ($('dashSearch')) {
+        $('dashSearch').addEventListener('input', function () {
+            dashState.text = this.value;
+            renderDash();
+        });
+    }
+    if ($('dashRefresh')) {
+        $('dashRefresh').addEventListener('click', function () {
+            loadDash(true).then(function () { toast('Dashboards atualizados'); });
+        });
+    }
+    if ($('dashExport')) {
+        $('dashExport').addEventListener('click', function () {
+            var rows = dashFilteredRows();
+            if (!rows.length) { toast('Nada para exportar'); return; }
+            var head = ['Empresa', 'Categoria', 'Cidade', 'Origem', 'Telefone', 'WhatsApp', 'Instagram', 'Site', 'E-mail', 'Nota', 'Avaliações', 'Status'];
+            var lines = [head.map(csvCell).join(';')];
+            rows.forEach(function (r) {
+                lines.push([r.title, r.category, r.city, r.source, r.phone, r.wa ? 'https://wa.me/' + r.wa : '', r.instagram, r.website, r.emails, r.rating || '', r.reviews || '', r.crmState].map(csvCell).join(';'));
+            });
+            downloadBlob('wins-hub-dashboard.csv', '\uFEFF' + lines.join('\r\n'));
+            toast('CSV do dashboard exportado (' + rows.length + ' leads)');
         });
     }
 
