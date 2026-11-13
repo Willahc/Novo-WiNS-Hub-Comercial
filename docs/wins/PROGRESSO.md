@@ -73,6 +73,9 @@ Detalhes de operação (logs, backup, restauração, HTTPS): `deploy/README.md`.
 - **Prévias personalizadas por nicho**: `agentes/entrega/previas/templates.mjs` serve páginas HTML mobile-first em `https://winshubcomercial.com.br/previa/<slug>` (público, sem senha) para Veterinário, Academia, B2B e Geral.
 - **Mini-CRM & Controle de Agentes (`/crm`)**: integrado na aba `CRM` do WiNS Hub + botão `Enviar para Agentes` no Painel, com KPIs, desempenho por nicho, histórico de conversas, logs ao vivo e Start/Stop do disparo.
 - **Qualificação inteligente & filtro `onWhatsApp`**: `checkWhatsApp()` valida números na Evolution API antes do disparo e `qualificarLead()` escolhe a oferta (Site + Prévia, Site + Vídeos IA ou Ads + Vídeos IA) com regras anti-alucinação.
+- **Raio-X Técnico & Auditoria Cirúrgica (`agentes/prospeccao/site-audit.mjs`)**: auditoria automática com Google PageSpeed Insights (nota mobile 0–100 e LCP em segundos), detecção de Google Tag Manager (GTM), Meta Pixel e links WhatsApp, além de lookup de CNPJ/sócios (QSA) via BrasilAPI, integrados ao `crm.mjs` (`/api/crm/audit`) e ao pitch do SDR.
+- **Identidade fixa do SDR (`agentes/sdr-whatsapp/server-webhook.mjs` e `lib.mjs`)**: apresentação padronizada como **William da WiNS Hub Comercial** em todo primeiro contato e follow-up, sem variação de nome entre mensagens.
+- **Assistente WiNS (Texto + Voz Contínua)**: copiloto interno no painel (`#assistantFab` / `POST /api/crm/assistant` em `crm.mjs`) conectado ao Claude (`callClaude`) com estado ao vivo do CRM, execução real de ações (`search_maps`, `audit_batch`, `start_dispatch`, `stop_dispatch`, `switch_view`), loop de voz contínuo mãos-livres (`SpeechRecognition` em `pt-BR` com debounce de silêncio + resposta em áudio via `speechSynthesis`) e renderização formatada no chat.
 
 ## Correções que já foram necessárias
 
