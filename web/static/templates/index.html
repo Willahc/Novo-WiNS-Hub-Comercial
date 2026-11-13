@@ -11,7 +11,7 @@
     <link rel="icon" type="image/png" href="/static/img/wins-simbolo.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&family=Space+Grotesk:wght@600;700&display=swap">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
     <link rel="stylesheet" href="/static/css/wins.css">
 </head>
@@ -27,11 +27,7 @@
     <aside class="panel">
         <header class="panel-head">
             <div class="brand">
-                <img class="logo" src="/static/img/wins-simbolo.png" alt="">
-                <div>
-                    <div class="brand-name">WiNS Hub Comercial</div>
-                    <div class="brand-sub">Empresas do Google Maps</div>
-                </div>
+                <div class="brand-name">WiNS Hub Comercial</div>
             </div>
             <button type="button" class="drawer-close" id="drawerClose" aria-label="Fechar menu">✕</button>
             <div class="seg" id="viewSeg">
@@ -265,7 +261,7 @@
             <button type="button" class="ghost" id="crmChatClose">Fechar</button>
         </div>
         <div class="crm-chat" id="crmChatBody"></div>
-        <pre id="crmPropostaBox" hidden style="white-space:pre-wrap;font-size:12px;max-height:220px;overflow:auto;background:var(--bg-soft,#141925);border:1px solid var(--border,#252c3f);border-radius:8px;padding:10px;margin:8px 0"></pre>
+        <pre id="crmPropostaBox" class="crm-proposta-box" hidden></pre>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
             <button type="button" class="ghost small" id="crmAuditOne" style="flex:1">Auditar Site</button>
             <button type="button" class="ghost small" id="crmLighthouseOne" style="flex:1">Lighthouse (Google)</button>

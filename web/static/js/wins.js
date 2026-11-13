@@ -882,6 +882,13 @@
             return '<tr><td>' + esc(n.nicho) + '</td><td class="num">' + n.na_fila + '</td><td class="num">' + n.enviados + '</td><td class="num">' + n.respostas + '</td><td class="num">' + n.fechados + '</td></tr>';
         }).join('');
 
+        var ST_LABELS = { all: 'Todos', na_fila: 'Na fila', enviado: 'Enviado', respondeu: 'Respondeu', proposto: 'Proposto', fechado: 'Fechado', descartado: 'Descartado' };
+        Array.prototype.forEach.call(document.querySelectorAll('#crmFilters button[data-st]'), function (b) {
+            var st = b.getAttribute('data-st');
+            var cnt = st === 'all' ? (c.total || 0) : (c[st] || 0);
+            b.textContent = (ST_LABELS[st] || st) + ' (' + cnt + ')';
+        });
+
         var q = ($('crmSearch').value || '').trim().toLowerCase();
         var list = (d.leads || []).filter(function (l) {
             if (crmState.filter !== 'all' && l.state !== crmState.filter) return false;
@@ -906,20 +913,29 @@
         var ST_LIST = ['na_fila', 'enviado', 'respondeu', 'proposto', 'fechado', 'descartado'];
         $('crmRows').innerHTML = list.map(function (l) {
             var checked = crmState.selectedKeys[l.key] ? ' checked' : '';
-            var badgeCls = (l.state === 'fechado' || l.state === 'proposto') ? 'tag dark' : 'tag';
-            var igBadge = l.instagram ? ' · <a href="' + esc(l.instagramUrl) + '" target="_blank" rel="noopener">' + esc(l.instagram) + '</a>' : '';
-            var stackTag = l.siteAudit && l.siteAudit.stack && l.siteAudit.stack.length ? ' · <span class="tag">' + esc(l.siteAudit.stack[0]) + '</span>' : '';
-            var lhTag = l.lighthouse && l.lighthouse.perf != null ? ' · <span class="tag' + (l.lighthouse.perf < 70 ? ' dark' : '') + '">LH ' + l.lighthouse.perf + '/100</span>' : '';
-            var auditBadge = (l.siteAudit ? ' · <span class="tag' + (l.siteAudit.score < 70 ? ' dark' : '') + '">Site ' + l.siteAudit.score + '/100 (Seg ' + l.siteAudit.securityScore + ')</span>' + stackTag : '') + lhTag;
+            var stLabel = ST_LABELS[l.state] || l.state;
+            var metaBadges = [
+                '<span class="crm-meta-chip">★ ' + l.score + ' · ' + int(l.avaliacoes) + ' aval.</span>',
+                '<span class="crm-meta-chip">' + (l.temSite ? 'Com site' : 'Sem site') + '</span>'
+            ];
+            if (l.instagram) metaBadges.push('<a class="crm-meta-chip link" href="' + esc(l.instagramUrl) + '" target="_blank" rel="noopener">' + esc(l.instagram) + '</a>');
+            if (l.siteAudit) {
+                metaBadges.push('<span class="crm-meta-chip' + (l.siteAudit.score < 70 ? ' warn' : ' ok') + '">Site ' + l.siteAudit.score + '/100</span>');
+                if (l.siteAudit.stack && l.siteAudit.stack.length) metaBadges.push('<span class="crm-meta-chip">' + esc(l.siteAudit.stack[0]) + '</span>');
+            }
+            if (l.lighthouse && l.lighthouse.perf != null) {
+                metaBadges.push('<span class="crm-meta-chip' + (l.lighthouse.perf < 70 ? ' warn' : ' ok') + '">LH ' + l.lighthouse.perf + '/100</span>');
+            }
+            var chatAttrs = 'data-chat="' + esc(l.telefone) + '" data-key="' + esc(l.key) + '" data-nome="' + esc(l.nome) + '" data-nicho="' + esc(l.nicho) + '"';
             return '<tr>' +
                 '<td class="chk-col"><input type="checkbox" class="crm-chk" data-key="' + esc(l.key) + '"' + checked + '></td>' +
-                '<td><div class="t-name">' + esc(l.nome) + '</div><div class="t-cat">Score ' + l.score + ' · ' + int(l.avaliacoes) + ' aval. · ' + (l.temSite ? 'Com site' : 'Sem site') + igBadge + auditBadge + '</div></td>' +
-                '<td><div>' + esc(l.nicho) + '</div><div class="t-cat">' + esc(l.cidade) + '</div></td>' +
-                '<td><span class="' + badgeCls + '">' + esc(l.state) + '</span></td>' +
-                '<td><button type="button" class="ghost" data-chat="' + esc(l.telefone) + '" data-key="' + esc(l.key) + '" data-nome="' + esc(l.nome) + '" data-nicho="' + esc(l.nicho) + '">' + l.msgCount + ' msgs</button></td>' +
-                '<td><a class="t-site" href="' + esc(l.previewUrl) + '" target="_blank" rel="noopener">Abrir prévia</a></td>' +
+                '<td><div class="t-name"><button type="button" class="crm-lead-btn" ' + chatAttrs + '>' + esc(l.nome) + '</button></div><div class="crm-sub-meta">' + metaBadges.join('') + '</div></td>' +
+                '<td><div class="crm-niche-main">' + esc(l.nicho) + '</div><div class="t-cat">' + esc(l.cidade) + '</div></td>' +
+                '<td><span class="st-pill st-' + esc(l.state) + '">' + esc(stLabel) + '</span></td>' +
+                '<td><button type="button" class="crm-chat-btn" ' + chatAttrs + '>💬 ' + l.msgCount + '</button></td>' +
+                '<td><a class="crm-prev-link" href="' + esc(l.previewUrl) + '" target="_blank" rel="noopener">Prévia ↗</a></td>' +
                 '<td><select class="crm-select" data-key="' + esc(l.key) + '">' +
-                ST_LIST.map(function (s) { return '<option value="' + s + '"' + (l.state === s ? ' selected' : '') + '>' + s + '</option>'; }).join('') +
+                ST_LIST.map(function (s) { return '<option value="' + s + '"' + (l.state === s ? ' selected' : '') + '>' + (ST_LABELS[s] || s) + '</option>'; }).join('') +
                 '</select></td>' +
                 '</tr>';
         }).join('');
@@ -977,7 +993,14 @@
                 var on = this.checked;
                 var d = crmState.data;
                 if (!d) return;
-                var q = ($('crmSearch').value || '').trim().toLowerCase();
+                var ST_LABELS = { all: 'Todos', na_fila: 'Na fila', enviado: 'Enviado', respondeu: 'Respondeu', proposto: 'Proposto', fechado: 'Fechado', descartado: 'Descartado' };
+        Array.prototype.forEach.call(document.querySelectorAll('#crmFilters button[data-st]'), function (b) {
+            var st = b.getAttribute('data-st');
+            var cnt = st === 'all' ? (c.total || 0) : (c[st] || 0);
+            b.textContent = (ST_LABELS[st] || st) + ' (' + cnt + ')';
+        });
+
+        var q = ($('crmSearch').value || '').trim().toLowerCase();
                 (d.leads || []).filter(function (l) {
                     if (crmState.filter !== 'all' && l.state !== crmState.filter) return false;
                     if (q && (l.nome + ' ' + l.nicho + ' ' + l.cidade).toLowerCase().indexOf(q) < 0) return false;

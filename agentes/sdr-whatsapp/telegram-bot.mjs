@@ -1,5 +1,6 @@
 // telegram-bot.mjs — Bot de comando remoto no Telegram (Chefe de Gabinete + Status + Simulação)
 import { execFile, spawn } from "node:child_process";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { promisify } from "node:util";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -77,7 +78,20 @@ async function handleCommand(cmdRaw) {
   return "Comando não reconhecido. Use /ajuda para ver os comandos.";
 }
 
-const tgHistory = [];
+const TG_HISTORY_PATH = resolve(__dirname, "tg-history.json");
+const tgHistory = (() => {
+  try {
+    if (existsSync(TG_HISTORY_PATH)) {
+      const arr = JSON.parse(readFileSync(TG_HISTORY_PATH, "utf8"));
+      return Array.isArray(arr) ? arr.slice(-12) : [];
+    }
+  } catch {}
+  return [];
+})();
+
+function saveTgHistory() {
+  try { writeFileSync(TG_HISTORY_PATH, JSON.stringify(tgHistory.slice(-12), null, 2)); } catch {}
+}
 
 function buildAgentContext() {
   const db = loadStatus();
@@ -122,51 +136,70 @@ Sempre inclua o ID numérico de cada lead listado.
 AÇÕES QUE VOCÊ PODE EXECUTAR:
 - Se o usuário pedir para auditar sites: inclua [[ACAO:auditar]] no final.
 - Se o usuário pedir para SIMULAR disparo (para os recomendados ou específicos): inclua [[ACAO:simular:ID1,ID2,...]] (ou [[ACAO:simular]] para toda a fila).
-- Se o usuário pedir para DISPARAR / PROSPECTAR / ENVIAR WhatsApp REAL para os leads escolhidos: inclua [[ACAO:disparar:ID1,ID2,...]] no final. Só use [[ACAO:disparar:...]] quando o usuário pedir explicitamente para enviar/disparar/prospectar.
+- Se o usuário pedir para DISPARAR / PROSPECTAR / ENVIAR WhatsApp REAL para os leads escolhidos: inclua UMA ÚNICA tag [[ACAO:disparar:ID1,ID2,...]] no final com TODOS os IDs numéricos separados por vírgula (ex: [[ACAO:disparar:3,4,5,6,7,8,10,11,12,13]]). NUNCA coloque uma tag por lead e NUNCA envie apenas 1 ID se o usuário pediu vários. Só use [[ACAO:disparar:...]] quando o usuário pedir explicitamente para enviar/disparar/prospectar.
 
 DADOS ATUAIS DO CRM:
 ${ctx}`;
 
   tgHistory.push({ role: "user", content: text });
-  while (tgHistory.length > 8) tgHistory.shift();
+  while (tgHistory.length > 12) tgHistory.shift();
+  saveTgHistory();
 
   logActivity("Telegram-IA", `💬 Pergunta: "${text.slice(0, 70).replace(/\s+/g, " ")}"`);
-  let reply = await callClaude({ system, messages: tgHistory, maxTokens: 800 });
+  let reply = await callClaude({ system, messages: tgHistory, maxTokens: 900 });
 
   const resolveKeysByIds = (idCsv) => {
-    const wanted = new Set(String(idCsv || "").split(",").map((s) => Number(s.trim())).filter((n) => !Number.isNaN(n) && n > 0));
+    const wanted = new Set(
+      String(idCsv || "")
+        .split(/[\s,;]+/)
+        .map((s) => Number(s.replace(/\D/g, "")))
+        .filter((n) => !Number.isNaN(n) && n > 0)
+    );
     const db = loadStatus();
     return Object.entries(db.leads || {})
       .filter(([, l]) => wanted.has(Number(l.id)))
-      .map(([k, l]) => ({ key: k, nome: l.nome }));
+      .map(([k, l]) => ({ key: k, nome: l.nome, state: l.state || "na_fila" }));
   };
 
   if (reply.includes("[[ACAO:auditar]]")) {
-    reply = reply.replace("[[ACAO:auditar]]", "").trim() + "\n\n" + await handleCommand("/auditar");
+    reply = reply.replace(/\[\[ACAO:auditar\]\]/g, "").trim() + "\n\n" + await handleCommand("/auditar");
   }
 
-  const simMatch = reply.match(/\[\[ACAO:simular(?::([0-9,\s]+))?\]\]/);
-  if (simMatch) {
-    reply = reply.replace(simMatch[0], "").trim();
-    const matched = simMatch[1] ? resolveKeysByIds(simMatch[1]) : [];
+  const simMatches = [...reply.matchAll(/\[\[ACAO:simular(?::([^\]]+))?\]\]/g)];
+  if (simMatches.length) {
+    const allIds = simMatches.map((m) => m[1] || "").filter(Boolean).join(",");
+    for (const m of simMatches) reply = reply.replace(m[0], "").trim();
+    const matched = allIds ? resolveKeysByIds(allIds) : [];
     const args = [resolve(__dirname, "worker-disparo.mjs"), "--dry-run", "--force-horario"];
     if (matched.length) args.push(`--keys=${matched.map((m) => m.key).join(",")}`);
     const { stdout } = await execFileAsync(process.execPath, args, { cwd: __dirname });
     reply += `\n\n🧪 Simulação (${matched.length || "fila"}):\n${stdout.trim().slice(-1200) || "Nenhum lead elegível."}`;
   }
 
-  const dispMatch = reply.match(/\[\[ACAO:disparar:([0-9,\s]+)\]\]/);
-  if (dispMatch) {
-    reply = reply.replace(dispMatch[0], "").trim();
-    const matched = resolveKeysByIds(dispMatch[1]);
+  const dispMatches = [...reply.matchAll(/\[\[ACAO:disparar(?::([^\]]+))?\]\]/g)];
+  if (dispMatches.length) {
+    const allIds = dispMatches.map((m) => m[1] || "").filter(Boolean).join(",");
+    for (const m of dispMatches) reply = reply.replace(m[0], "").trim();
+    let matched = allIds ? resolveKeysByIds(allIds) : [];
     if (!matched.length) {
-      reply += "\n\n⚠️ Não encontrei esses IDs no status.json.";
+      const db = loadStatus();
+      matched = Object.entries(db.leads || {})
+        .filter(([, l]) => (l.state || "na_fila") === "na_fila")
+        .sort((a, b) => (b[1].score || 0) - (a[1].score || 0))
+        .slice(0, 10)
+        .map(([k, l]) => ({ key: k, nome: l.nome, state: l.state || "na_fila" }));
+    }
+    const elegiveis = matched.filter((m) => m.state === "na_fila");
+    const ignorados = matched.filter((m) => m.state !== "na_fila");
+    if (!elegiveis.length) {
+      reply += `\n\n⚠️ Nenhum dos ${matched.length} lead(s) informados está 'na_fila' agora.`;
     } else {
-      const keys = matched.map((m) => m.key);
-      logActivity("Telegram-IA", `🚀 Disparando em lote para ${matched.length} lead(s): ${matched.map((m) => m.nome).join(", ")}`);
+      const keys = elegiveis.map((m) => m.key);
+      logActivity("Telegram-IA", `🚀 Disparando em lote para ${elegiveis.length} lead(s): ${elegiveis.map((m) => m.nome).join(", ")}`);
       const child = spawn(process.execPath, [resolve(__dirname, "worker-disparo.mjs"), "--force-horario", `--keys=${keys.join(",")}`], {
         cwd: __dirname,
         env: process.env,
+        detached: true,
       });
       let out = "";
       child.stdout.on("data", (d) => { const s = d.toString("utf8"); out += s; logActivity("Disparador", s); });
@@ -174,12 +207,17 @@ ${ctx}`;
       child.on("close", (code) => {
         notifyTelegram(`✅ Lote do Telegram finalizado (código ${code}):\n${out.trim().slice(-1200)}`).catch(() => {});
       });
-      reply += `\n\n🚀 Disparo REAL iniciado em segundo plano para ${matched.length} lead(s):\n• ${matched.map((m) => m.nome).join("\n• ")}\n\nTe aviso aqui quando o lote terminar!`;
+      reply += `\n\n🚀 Disparo REAL iniciado em segundo plano para ${elegiveis.length} lead(s):\n• ${elegiveis.map((m) => m.nome).join("\n• ")}`;
+      if (ignorados.length) {
+        reply += `\n\n⏭️ Já fora da fila (${ignorados.length}): ${ignorados.map((m) => `${m.nome} (${m.state})`).join(", ")}`;
+      }
+      reply += `\n\nTe aviso aqui quando o lote terminar!`;
     }
   }
 
   tgHistory.push({ role: "assistant", content: reply });
-  while (tgHistory.length > 8) tgHistory.shift();
+  while (tgHistory.length > 12) tgHistory.shift();
+  saveTgHistory();
   return reply;
 }
 
