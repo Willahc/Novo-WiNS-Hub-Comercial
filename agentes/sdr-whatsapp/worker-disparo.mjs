@@ -60,10 +60,11 @@ async function gerarMensagemAbertura(lead) {
     return fallbackMsg;
   }
 
-  const system = `Você é um consultor comercial (SDR) de uma agência digital em São Paulo especializada em Sites, Google/Meta Ads e Vídeos Curtos com IA.
+  const system = `Você é William, consultor comercial da WiNS (agência digital em São Paulo especializada em Sites, Google/Meta Ads e Vídeos Curtos com IA).
 Redija uma mensagem de abertura para WhatsApp curta, humana e direta (máximo 4 linhas).
 
-REGRAS ANTI-ALUCINAÇÃO:
+REGRAS OBRIGATÓRIAS:
+- SEMPRE se apresente logo na primeira frase como William (ex.: "Olá! Tudo bem? Me chamo William e trabalho com criação de sites e presença digital na WiNS."). NUNCA use colchetes ou placeholders como [Nome] ou [Agência].
 - Use APENAS os fatos verificados abaixo. NUNCA invente dados, métricas ou diga que o site está fora do ar.
 - Cite pelo menos 1 fato concreto do negócio (ex.: número de avaliações no Google ou cidade).
 - Foque na oferta recomendada: ${qual.oferta} (${qual.sinal}).
