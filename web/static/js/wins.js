@@ -1268,7 +1268,7 @@
                     if (byKey[key]) return;
                     var sk = siteKind(p.website);
                     var ig = instagramHandle(p.website);
-                    var wa = whatsappNumber(p.phone);
+                    var wa = whatsapp(p.phone);
                     var row = {
                         title: p.title || '',
                         category: p.category || '',
@@ -1283,8 +1283,8 @@
                         rawSite: p.website || '',
                         siteKind: sk,
                         emails: p.emails || '',
-                        rating: Number(p.rating) || 0,
-                        reviews: Number(p.reviews) || 0,
+                        rating: Number(p.review_rating || p.rating) || 0,
+                        reviews: Number(p.review_count || p.reviews) || 0,
                         crmState: 'mapeado',
                         link: p.link || ''
                     };
@@ -1299,7 +1299,7 @@
                     if (byKey[key]) return;
                     var sk = siteKind(p.website);
                     var ig = instagramHandle(p.website);
-                    var wa = whatsappNumber(p.phone);
+                    var wa = whatsapp(p.phone);
                     var row = {
                         title: p.title || '',
                         category: p.category || '',
@@ -1332,7 +1332,7 @@
                         : (/instagram\.com|facebook\.com|linktr\.ee|wa\.me|whatsapp\.com|tiktok\.com/i.test(l.site || '') ? 'social' : 'none');
                     var ig = l.instagram || instagramHandle(l.site);
                     var igUrl = l.instagramUrl || (ig ? ('https://www.instagram.com/' + ig.replace(/^@/, '') + '/') : '');
-                    var wa = whatsappNumber(l.telefone);
+                    var wa = whatsapp(l.telefone);
                     if (byKey[key]) {
                         var existing = byKey[key];
                         existing.crmState = l.state || 'na_fila';
