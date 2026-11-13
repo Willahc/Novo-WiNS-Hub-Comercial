@@ -285,10 +285,12 @@ export function qualificarLead(lead) {
   const lh = lead?.lighthouse;
   const auditFatos = [
     a ? `Nota técnica do site: ${a.score}/100 (Segurança ${a.securityScore}/100)` : null,
+    a?.mobileScore != null ? `PageSpeed Mobile: ${a.mobileScore}/100${a.lcpSec != null ? ` (LCP ${a.lcpSec}s)` : ""}` : null,
     lh?.perf != null ? `Google Lighthouse: Performance ${lh.perf}/100 · SEO ${lh.seo ?? "-"}/100` : null,
     a?.stack?.length ? `Tecnologia detectada: ${a.stack.join(", ")}` : null,
-    a ? `Pixels/Rastreamento: ${a.pixels?.length ? a.pixels.join(", ") : "Nenhum pixel de anúncio detectado"}` : null,
+    a ? `Pixels/Rastreamento: ${a.pixels?.length ? a.pixels.join(", ") : "Nenhum GTM/Pixel detectado"}` : null,
     a?.empresaInfo?.socios?.length ? `Sócios (CNPJ): ${a.empresaInfo.socios.join(", ")}` : null,
+    a?.ofertaIdeal ? `Oferta ideal (Raio-X): ${a.ofertaIdeal}` : null,
   ].filter(Boolean);
 
   const highVolume = avaliacoes >= 50;

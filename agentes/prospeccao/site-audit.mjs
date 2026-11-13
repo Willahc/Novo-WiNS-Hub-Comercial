@@ -146,6 +146,27 @@ export async function lookupCnpj(cnpjFormatted = "") {
   }
 }
 
+async function fetchPageSpeedMobile(targetUrl) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 10000);
+  try {
+    const key = process.env.PAGESPEED_API_KEY ? `&key=${encodeURIComponent(process.env.PAGESPEED_API_KEY)}` : "";
+    const api = `https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=${encodeURIComponent(targetUrl)}&strategy=mobile&category=performance${key}`;
+    const res = await fetch(api, { signal: ctrl.signal });
+    clearTimeout(timer);
+    if (!res.ok) return null;
+    const d = await res.json();
+    const scoreRaw = d?.lighthouseResult?.categories?.performance?.score;
+    const lcpMs = d?.lighthouseResult?.audits?.["largest-contentful-paint"]?.numericValue;
+    const mobileScore = typeof scoreRaw === "number" ? Math.round(scoreRaw * 100) : null;
+    const lcpSec = typeof lcpMs === "number" ? Number((lcpMs / 1000).toFixed(1)) : null;
+    return (mobileScore !== null || lcpSec !== null) ? { mobileScore, lcpSec } : null;
+  } catch {
+    clearTimeout(timer);
+    return null;
+  }
+}
+
 export async function auditSite(rawUrl, leadName = "") {
   const url = /^https?:\/\//i.test(rawUrl) ? rawUrl.trim() : `https://${rawUrl.trim()}`;
   const ctrl = new AbortController();
@@ -209,17 +230,41 @@ export async function auditSite(rawUrl, leadName = "") {
     const stack = detectStack(html, res.headers);
     const pixels = detectPixels(html);
     const cnpj = extractCnpj(html);
-    const empresaInfo = cnpj ? await lookupCnpj(cnpj) : null;
+    const faviconOk = /<link[^>]+rel=["'][^"']*icon[^"']*["']/i.test(lower);
+    const waLinkMatch = html.match(/https?:\/\/(?:wa\.me|api\.whatsapp\.com\/send\?[^"'\s<>]*)/i);
+    const whatsappUrl = waLinkMatch ? waLinkMatch[0] : "";
+    const waDigitsOk = whatsappUrl ? whatsappUrl.replace(/\D/g, "").length >= 10 : whatsappOk;
 
-    if (!pixels.includes("Meta Pixel") && !pixels.includes("Google Ads")) {
-      problems.push("Sem Pixel de anúncios (Meta/Google Ads)");
+    const [empresaInfo, psi] = await Promise.all([
+      cnpj ? lookupCnpj(cnpj) : Promise.resolve(null),
+      fetchPageSpeedMobile(finalUrl),
+    ]);
+
+    if (!faviconOk) problems.push("Sem favicon (ícone na aba do navegador)");
+    if (whatsappUrl && !waDigitsOk) problems.push("Botão de WhatsApp sem número válido");
+    if (psi?.lcpSec != null && psi.lcpSec >= 3.0) {
+      problems.push(`LCP mobile lento (${psi.lcpSec}s — ideal < 2,5s)`);
     }
+    if (!pixels.includes("Meta Pixel") && !pixels.includes("Google Ads") && !pixels.includes("Google Tag Manager")) {
+      problems.push("Sem GTM/Pixel (sem medição de conversões)");
+    }
+
+    const mobileScore = psi?.mobileScore ?? null;
+    const lcpSec = psi?.lcpSec ?? null;
+    const hasTracking = pixels.includes("Google Tag Manager") || pixels.includes("Meta Pixel") || pixels.includes("Google Ads");
+    const ofertaIdeal = (score < 50 || (mobileScore !== null && mobileScore < 50) || !httpsOk)
+      ? "Landing Page de Alta Conversão"
+      : (!hasTracking ? "Traqueamento (GTM/Pixel) + Otimização" : "Gestão de Tráfego Pago + Vídeos Curtos");
+
+    const socio = empresaInfo?.socios?.[0] || "o responsável";
+    const mainIssue = problems[0] || "oportunidade de otimizar conversão e traqueamento";
+    const callScript = `Olá! Gostaria de falar com ${socio} sobre uma falha técnica que identificamos no site/agendamento da ${leadName || "empresa"} (${mainIssue}) — não é contato de cliente.`;
 
     const ig = extractInstagramFromText(html);
     const top2 = problems.slice(0, 2).join(" e ").toLowerCase();
     const pitch = problems.length
-      ? `Olá! Analisei o site da ${leadName || "empresa"} (${finalUrl}) — nota técnica ${score}/100. Notei ${top2}. Posso te enviar uma prévia gratuita de uma versão atualizada, rápida e segura?`
-      : `Olá! O site da ${leadName || "empresa"} está bem estruturado (${score}/100). Se quiser aumentar ainda mais os agendamentos no WhatsApp, temos um modelo focado em conversão.`;
+      ? `Olá! Me chamo William, da WiNS. Analisei o site da ${leadName || "empresa"} (${finalUrl}) — nota técnica ${score}/100${lcpSec ? ` e LCP ${lcpSec}s no celular` : ""}. Notei ${top2}. Posso te enviar uma prévia gratuita de uma versão atualizada, rápida e rastreada?`
+      : `Olá! Me chamo William, da WiNS. O site da ${leadName || "empresa"} está bem estruturado (${score}/100). Se quiser escalar os agendamentos no WhatsApp com traqueamento e tráfego pago, posso te mostrar como funciona.`;
 
     return {
       ok: true,
@@ -228,13 +273,19 @@ export async function auditSite(rawUrl, leadName = "") {
       securityScore,
       qualityScore,
       loadMs,
+      mobileScore,
+      lcpSec,
       https: httpsOk,
       mobile: viewportOk,
+      faviconOk,
       whatsappBtn: whatsappOk,
+      whatsappUrl,
       stack,
       pixels,
       cnpj,
       empresaInfo,
+      ofertaIdeal,
+      callScript,
       problems: problems.slice(0, 6),
       instagram: ig?.handle || "",
       instagramUrl: ig?.url || "",

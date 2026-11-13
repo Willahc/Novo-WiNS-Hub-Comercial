@@ -1076,11 +1076,14 @@
                         var a = res.audit;
                         var txt = 'Site: ' + a.url +
                             '\nScore Geral: ' + a.score + '/100 (Segurança: ' + a.securityScore + '/100 · Qualidade: ' + a.qualityScore + '/100)' +
+                            (a.mobileScore != null || a.lcpSec != null ? '\nPageSpeed Mobile: ' + (a.mobileScore != null ? a.mobileScore + '/100' : '-') + (a.lcpSec != null ? ' · LCP: ' + a.lcpSec + 's' : '') : '') +
+                            (a.ofertaIdeal ? '\nOferta recomendada: ' + a.ofertaIdeal : '') +
                             (a.stack && a.stack.length ? '\nStack detectada: ' + a.stack.join(', ') : '') +
                             '\nPixels: ' + (a.pixels && a.pixels.length ? a.pixels.join(', ') : 'Nenhum detectado') +
                             (a.empresaInfo ? '\nCNPJ: ' + a.empresaInfo.cnpj + (a.empresaInfo.porte ? ' (' + a.empresaInfo.porte + ')' : '') + (a.empresaInfo.socios && a.empresaInfo.socios.length ? ' · Sócios: ' + a.empresaInfo.socios.join(', ') : '') : '') +
                             (a.instagram ? '\nInstagram encontrado: ' + a.instagram : '') +
                             (a.problems && a.problems.length ? '\n\nPontos encontrados:\n- ' + a.problems.join('\n- ') : '') +
+                            (a.callScript ? '\n\nRoteiro de Ligação (Sócio/Recepção):\n' + a.callScript : '') +
                             '\n\nPitch sugerido (copiado):\n' + a.pitch;
                         var box = $('crmPropostaBox');
                         box.textContent = txt;
