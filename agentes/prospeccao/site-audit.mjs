@@ -12,6 +12,75 @@ export function extractInstagramFromText(text = "") {
   return { handle: `@${handle}`, url: `https://www.instagram.com/${handle}/` };
 }
 
+const IG_STOPWORDS = new Set([
+  "ltda", "eireli", "mei", "s/a", "sa", "comercio", "servicos", "servico", "industria",
+  "industrias", "academia", "clinica", "loja", "studio", "estudio", "centro", "vila",
+  "jardim", "parque", "sao", "paulo", "rio", "janeiro", "belo", "horizonte", "brasil",
+  "de", "da", "do", "das", "dos", "em", "na", "no", "para", "com", "por", "e", "a", "o",
+]);
+
+function normIgTokens(str = "") {
+  return String(str || "")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((t) => t.length >= 3 && !IG_STOPWORDS.has(t));
+}
+
+export async function searchInstagramByName(nome = "", cidade = "") {
+  const cleanName = String(nome || "").trim();
+  if (cleanName.replace(/[^a-zA-Z0-9]/g, "").length < 3) return null;
+  const tokens = normIgTokens(cleanName);
+  if (tokens.length === 0) return null;
+
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 7000);
+  try {
+    const q = `${cleanName} ${cidade || ""} site:instagram.com`.trim();
+    const res = await fetch(`https://br.search.yahoo.com/search?p=${encodeURIComponent(q)}`, {
+      signal: ctrl.signal,
+      headers: {
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36",
+        "Accept-Language": "pt-BR,pt;q=0.9",
+      },
+    });
+    if (!res.ok) return null;
+    const html = await res.text();
+    const seen = new Set();
+    const candidates = [];
+    for (const m of html.matchAll(/instagram\.com(?:%2f|\/)([a-zA-Z0-9._]+)/gi)) {
+      const h = m[1].replace(/\/$/, "");
+      const low = h.toLowerCase();
+      if (!h || h.length < 3 || seen.has(low)) continue;
+      if (/^(p|reel|reels|stories|explore|accounts|tv|share|sharer|directory|about|legal|developer|seo)$/i.test(low)) continue;
+      seen.add(low);
+      candidates.push(h);
+    }
+
+    let best = null;
+    let bestScore = 0;
+    const minMatches = tokens.length >= 2 ? 2 : (tokens[0].length >= 4 ? 1 : 2);
+    for (const h of candidates.slice(0, 8)) {
+      const low = h.toLowerCase().replace(/[._]/g, "");
+      let hits = 0;
+      for (const tok of tokens) {
+        if (low.includes(tok)) hits++;
+      }
+      if (hits >= minMatches && hits > bestScore) {
+        bestScore = hits;
+        best = h;
+      }
+    }
+    if (!best) return null;
+    return { handle: `@${best}`, url: `https://www.instagram.com/${best}/` };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export function detectStack(html = "", headers = null) {
   const lower = String(html).toLowerCase();
   const stack = [];

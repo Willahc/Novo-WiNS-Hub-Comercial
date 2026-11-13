@@ -27,6 +27,7 @@ import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { searchInstagramByName } from "./site-audit.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const STATUS_PATH = resolve(__dirname, "status.json");
@@ -569,6 +570,13 @@ for (const l of candidatos) {
     }
   }
   l.en = await enriquecer(l);
+  if (!l.instagram) {
+    const igFound = await searchInstagramByName(l.nome, l.cidade);
+    if (igFound) {
+      l.instagram = igFound;
+      l.temInsta = true;
+    }
+  }
   candidatosFinais.push(l);
 }
 
