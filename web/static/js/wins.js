@@ -1568,14 +1568,31 @@
 
     var assistantState = { history: [], tts: false, busy: false, rec: null, listening: false };
 
+    function formatAssistantHtml(text) {
+        var safe = String(text || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+        safe = safe.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+        safe = safe.replace(/`([^`]+)`/g, '<code>$1</code>');
+        return safe;
+    }
+
+    function setAssistantMsgText(el, role, text) {
+        if (!el) return;
+        if (role === 'user') el.textContent = text;
+        else el.innerHTML = formatAssistantHtml(text);
+        var box = $('assistantMsgs');
+        if (box) box.scrollTop = box.scrollHeight;
+    }
+
     function appendAssistantMsg(role, text) {
         var box = $('assistantMsgs');
         if (!box) return null;
         var div = document.createElement('div');
         div.className = 'assistant-msg ' + (role === 'user' ? 'user' : 'bot');
-        div.textContent = text;
         box.appendChild(div);
-        box.scrollTop = box.scrollHeight;
+        setAssistantMsgText(div, role, text);
         return div;
     }
 
@@ -1605,7 +1622,7 @@
             .then(function (r) { return r.json(); })
             .then(function (res) {
                 var reply = res.ok ? (res.reply || 'Pronto.') : ('Erro: ' + (res.error || 'falha no assistente'));
-                if (waitEl) waitEl.textContent = reply;
+                setAssistantMsgText(waitEl, 'bot', reply);
                 assistantState.history.push({ role: 'user', content: msg }, { role: 'assistant', content: reply });
                 speakPtBr(reply);
                 if (res.executed) {
@@ -1615,7 +1632,7 @@
                 }
             })
             .catch(function () {
-                if (waitEl) waitEl.textContent = 'Não consegui falar com o assistente agora.';
+                setAssistantMsgText(waitEl, 'bot', 'Não consegui falar com o assistente agora.');
             })
             .finally(function () {
                 assistantState.busy = false;
