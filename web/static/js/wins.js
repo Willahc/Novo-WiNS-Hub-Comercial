@@ -1235,12 +1235,12 @@
             var completed = (jobs || []).filter(function (j) { return j.Status === 'ok' || j.Status === 'working'; });
             var jobFetches = completed.map(function (j) {
                 if (!force && dashState.jobCache[j.ID]) return Promise.resolve({ job: j, places: dashState.jobCache[j.ID] });
-                return fetch('/api/v1/jobs/' + encodeURIComponent(j.ID) + '/download')
-                    .then(function (r) { return r.ok ? r.text() : ''; })
-                    .then(function (csv) {
-                        var places = csv ? parseCsv(csv).map(rowToPlace) : [];
-                        dashState.jobCache[j.ID] = places;
-                        return { job: j, places: places };
+                return fetch('/api/v1/jobs/' + encodeURIComponent(j.ID) + '/places')
+                    .then(function (r) { return r.ok ? r.json() : []; })
+                    .then(function (places) {
+                        var list = Array.isArray(places) ? places : [];
+                        dashState.jobCache[j.ID] = list;
+                        return { job: j, places: list };
                     })
                     .catch(function () { return { job: j, places: [] }; });
             });
@@ -1370,6 +1370,8 @@
             dashState.rows = order;
             populateDashJobs(jobResults, arch && arch.files ? arch.files : []);
             renderDash();
+        }).catch(function (err) {
+            if ($('dashMeta')) $('dashMeta').textContent = 'Erro ao carregar dados: ' + (err && err.message ? err.message : 'falha');
         }).finally(function () {
             dashState.loading = false;
         });
@@ -1549,7 +1551,12 @@
             rows.forEach(function (r) {
                 lines.push([r.title, r.category, r.city, r.source, r.phone, r.wa ? 'https://wa.me/' + r.wa : '', r.instagram, r.website, r.emails, r.rating || '', r.reviews || '', r.crmState].map(csvCell).join(';'));
             });
-            downloadBlob('wins-hub-dashboard.csv', '\uFEFF' + lines.join('\r\n'));
+            var blob = new Blob(['\uFEFF' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+            var a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'wins-hub-dashboard-' + new Date().toISOString().slice(0, 10) + '.csv';
+            a.click();
+            setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
             toast('CSV do dashboard exportado (' + rows.length + ' leads)');
         });
     }
