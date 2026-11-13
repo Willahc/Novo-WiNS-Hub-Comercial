@@ -1566,7 +1566,37 @@
 
     // ---------- Assistente Interno (Chat + Voz) ----------
 
-    var assistantState = { history: [], tts: false, busy: false, rec: null, listening: false };
+    var assistantState = {
+        history: [],
+        tts: false,
+        userMutedTts: false,
+        busy: false,
+        rec: null,
+        listening: false,
+        liveVoice: false,
+        silenceTimer: null,
+        speaking: false
+    };
+
+    function setAssistantStatus(txt) {
+        if ($('assistantSub')) $('assistantSub').textContent = txt || 'Fale ou digite um comando';
+    }
+
+    function stopVoiceLoop() {
+        assistantState.liveVoice = false;
+        if (assistantState.silenceTimer) {
+            clearTimeout(assistantState.silenceTimer);
+            assistantState.silenceTimer = null;
+        }
+        if (assistantState.rec && assistantState.listening) {
+            try { assistantState.rec.abort(); } catch {}
+        }
+        assistantState.listening = false;
+        if ($('assistantMic')) $('assistantMic').classList.remove('listening');
+        if (window.speechSynthesis) window.speechSynthesis.cancel();
+        assistantState.speaking = false;
+        setAssistantStatus('Fale ou digite um comando');
+    }
 
     function formatAssistantHtml(text) {
         var safe = String(text || '')
@@ -1596,23 +1626,58 @@
         return div;
     }
 
-    function speakPtBr(text) {
-        if (!assistantState.tts || !window.speechSynthesis || !text) return;
-        try {
-            window.speechSynthesis.cancel();
-            var u = new SpeechSynthesisUtterance(text);
-            u.lang = 'pt-BR';
-            window.speechSynthesis.speak(u);
-        } catch {}
+    function cleanForSpeech(text) {
+        return String(text || '')
+            .replace(/\*\*(.+?)\*\*/g, '$1')
+            .replace(/`([^`]+)`/g, '$1')
+            .replace(/[✅❌⚠️🎙️🔊🔇🤔]/g, '')
+            .replace(/\s+/g, ' ')
+            .trim();
     }
 
-    function sendAssistantPrompt(text) {
+    function speakPtBr(text, onDone) {
+        var clean = cleanForSpeech(text);
+        if (!assistantState.tts || !window.speechSynthesis || !clean) {
+            if (onDone) onDone();
+            return;
+        }
+        try {
+            window.speechSynthesis.cancel();
+            var u = new SpeechSynthesisUtterance(clean);
+            u.lang = 'pt-BR';
+            u.rate = 1.05;
+            var voices = window.speechSynthesis.getVoices ? window.speechSynthesis.getVoices() : [];
+            var ptVoice = voices.find(function (v) { return /pt[-_]BR/i.test(v.lang) && /google|microsoft|luciana|maria|daniel/i.test(v.name); })
+                || voices.find(function (v) { return /pt[-_]BR/i.test(v.lang); })
+                || voices.find(function (v) { return /^pt/i.test(v.lang); });
+            if (ptVoice) u.voice = ptVoice;
+            assistantState.speaking = true;
+            setAssistantStatus('🔊 Respondendo...');
+            var finished = false;
+            var done = function () {
+                if (finished) return;
+                finished = true;
+                assistantState.speaking = false;
+                if (onDone) onDone();
+            };
+            u.onend = done;
+            u.onerror = done;
+            window.speechSynthesis.speak(u);
+        } catch {
+            assistantState.speaking = false;
+            if (onDone) onDone();
+        }
+    }
+
+    function sendAssistantPrompt(text, opts) {
+        opts = opts || {};
         var msg = String(text || '').trim();
         if (!msg || assistantState.busy) return;
         assistantState.busy = true;
         appendAssistantMsg('user', msg);
         if ($('assistantInput')) $('assistantInput').value = '';
         var waitEl = appendAssistantMsg('bot', 'Pensando...');
+        setAssistantStatus('🤔 Pensando...');
 
         fetch('/api/crm/assistant', {
             method: 'POST',
@@ -1624,33 +1689,129 @@
                 var reply = res.ok ? (res.reply || 'Pronto.') : ('Erro: ' + (res.error || 'falha no assistente'));
                 setAssistantMsgText(waitEl, 'bot', reply);
                 assistantState.history.push({ role: 'user', content: msg }, { role: 'assistant', content: reply });
-                speakPtBr(reply);
                 if (res.executed) {
                     if (res.executed.type === 'search_maps') loadJobs();
                     if (res.executed.type === 'audit_batch' || res.executed.type === 'start_dispatch' || res.executed.type === 'stop_dispatch') loadCrm();
                     if (res.executed.type === 'switch_view' && res.executed.view) setView(res.executed.view);
                 }
+                speakPtBr(reply, function () {
+                    if (opts.fromVoice && assistantState.liveVoice && $('assistantBox') && !$('assistantBox').hidden) {
+                        startVoiceListening();
+                    } else {
+                        setAssistantStatus('Fale ou digite um comando');
+                    }
+                });
             })
             .catch(function () {
                 setAssistantMsgText(waitEl, 'bot', 'Não consegui falar com o assistente agora.');
+                setAssistantStatus('Fale ou digite um comando');
             })
             .finally(function () {
                 assistantState.busy = false;
             });
     }
 
+    function startVoiceListening() {
+        var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SR) { toast('Use Chrome ou Edge para comando de voz.'); return; }
+        if (assistantState.busy) return;
+        if (window.speechSynthesis) window.speechSynthesis.cancel();
+        assistantState.speaking = false;
+        assistantState.liveVoice = true;
+        if (!assistantState.userMutedTts && !assistantState.tts) {
+            assistantState.tts = true;
+            if ($('assistantTts')) $('assistantTts').textContent = '🔊';
+        }
+
+        var rec = new SR();
+        rec.lang = 'pt-BR';
+        rec.continuous = true;
+        rec.interimResults = true;
+        rec.maxAlternatives = 1;
+        assistantState.rec = rec;
+        assistantState.listening = true;
+        if ($('assistantMic')) $('assistantMic').classList.add('listening');
+        setAssistantStatus('🎙️ Ouvindo... fale no seu ritmo');
+
+        var latestTranscript = '';
+        var sent = false;
+
+        function commitSpeech() {
+            if (sent) return;
+            var cmd = latestTranscript.trim();
+            if (!cmd) return;
+            sent = true;
+            if (assistantState.silenceTimer) {
+                clearTimeout(assistantState.silenceTimer);
+                assistantState.silenceTimer = null;
+            }
+            assistantState.listening = false;
+            if ($('assistantMic')) $('assistantMic').classList.remove('listening');
+            try { rec.stop(); } catch {}
+            sendAssistantPrompt(cmd, { fromVoice: true });
+        }
+
+        rec.onresult = function (ev) {
+            var full = '';
+            for (var i = 0; i < ev.results.length; i++) {
+                full += ev.results[i][0].transcript + ' ';
+            }
+            latestTranscript = full.trim();
+            if ($('assistantInput')) $('assistantInput').value = latestTranscript;
+            if (assistantState.silenceTimer) clearTimeout(assistantState.silenceTimer);
+            if (latestTranscript) {
+                assistantState.silenceTimer = setTimeout(commitSpeech, 1500);
+            }
+        };
+        rec.onerror = function (ev) {
+            if (ev && ev.error === 'aborted') return;
+            assistantState.listening = false;
+            if ($('assistantMic')) $('assistantMic').classList.remove('listening');
+            if (ev && (ev.error === 'not-allowed' || ev.error === 'service-not-allowed')) {
+                assistantState.liveVoice = false;
+                toast('Permissão do microfone negada no navegador.');
+                setAssistantStatus('Fale ou digite um comando');
+            }
+        };
+        rec.onend = function () {
+            assistantState.listening = false;
+            if ($('assistantMic')) $('assistantMic').classList.remove('listening');
+            if (assistantState.silenceTimer) {
+                clearTimeout(assistantState.silenceTimer);
+                assistantState.silenceTimer = null;
+            }
+            if (!sent && latestTranscript.trim()) {
+                commitSpeech();
+            } else if (!sent && assistantState.liveVoice && !assistantState.busy && !assistantState.speaking) {
+                setAssistantStatus('Fale ou digite um comando');
+                assistantState.liveVoice = false;
+            }
+        };
+        try {
+            rec.start();
+        } catch {
+            assistantState.listening = false;
+            if ($('assistantMic')) $('assistantMic').classList.remove('listening');
+        }
+    }
+
     if ($('assistantFab') && $('assistantBox')) {
         $('assistantFab').addEventListener('click', function () {
             $('assistantBox').hidden = !$('assistantBox').hidden;
-            if (!$('assistantBox').hidden && $('assistantInput')) $('assistantInput').focus();
+            if ($('assistantBox').hidden) stopVoiceLoop();
+            else if ($('assistantInput')) $('assistantInput').focus();
         });
     }
     if ($('assistantClose') && $('assistantBox')) {
-        $('assistantClose').addEventListener('click', function () { $('assistantBox').hidden = true; });
+        $('assistantClose').addEventListener('click', function () {
+            $('assistantBox').hidden = true;
+            stopVoiceLoop();
+        });
     }
     if ($('assistantTts')) {
         $('assistantTts').addEventListener('click', function () {
             assistantState.tts = !assistantState.tts;
+            assistantState.userMutedTts = !assistantState.tts;
             this.textContent = assistantState.tts ? '🔊' : '🔇';
             if (!assistantState.tts && window.speechSynthesis) window.speechSynthesis.cancel();
         });
@@ -1658,51 +1819,37 @@
     if ($('assistantForm')) {
         $('assistantForm').addEventListener('submit', function (e) {
             e.preventDefault();
+            assistantState.liveVoice = false;
             sendAssistantPrompt($('assistantInput') ? $('assistantInput').value : '');
         });
     }
     if ($('assistantChips')) {
         $('assistantChips').addEventListener('click', function (e) {
             var btn = e.target.closest('button[data-p]');
-            if (btn) sendAssistantPrompt(btn.getAttribute('data-p'));
+            if (btn) {
+                assistantState.liveVoice = false;
+                sendAssistantPrompt(btn.getAttribute('data-p'));
+            }
         });
     }
     if ($('assistantMic')) {
         $('assistantMic').addEventListener('click', function () {
-            var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-            if (!SR) { toast('Use Chrome ou Edge para comando de voz.'); return; }
-            if (assistantState.listening && assistantState.rec) {
-                assistantState.rec.stop();
+            if (assistantState.speaking) {
+                if (window.speechSynthesis) window.speechSynthesis.cancel();
+                assistantState.speaking = false;
+                startVoiceListening();
                 return;
             }
-            var rec = new SR();
-            rec.lang = 'pt-BR';
-            rec.interimResults = true;
-            rec.maxAlternatives = 1;
-            assistantState.rec = rec;
-            assistantState.listening = true;
-            $('assistantMic').classList.add('listening');
-
-            var finalTxt = '';
-            rec.onresult = function (ev) {
-                var txt = '';
-                for (var i = ev.resultIndex; i < ev.results.length; i++) {
-                    txt += ev.results[i][0].transcript;
-                    if (ev.results[i].isFinal) finalTxt = txt;
+            if (assistantState.listening && assistantState.rec) {
+                var txt = ($('assistantInput') ? $('assistantInput').value : '').trim();
+                if (!txt) {
+                    stopVoiceLoop();
+                } else {
+                    try { assistantState.rec.stop(); } catch {}
                 }
-                if ($('assistantInput')) $('assistantInput').value = txt;
-            };
-            rec.onerror = function () {
-                assistantState.listening = false;
-                $('assistantMic').classList.remove('listening');
-            };
-            rec.onend = function () {
-                assistantState.listening = false;
-                $('assistantMic').classList.remove('listening');
-                var cmd = (finalTxt || ($('assistantInput') ? $('assistantInput').value : '')).trim();
-                if (cmd) sendAssistantPrompt(cmd);
-            };
-            rec.start();
+                return;
+            }
+            startVoiceListening();
         });
     }
 
