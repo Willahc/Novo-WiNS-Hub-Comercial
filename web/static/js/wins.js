@@ -1564,6 +1564,131 @@
         });
     }
 
+    // ---------- Assistente Interno (Chat + Voz) ----------
+
+    var assistantState = { history: [], tts: false, busy: false, rec: null, listening: false };
+
+    function appendAssistantMsg(role, text) {
+        var box = $('assistantMsgs');
+        if (!box) return null;
+        var div = document.createElement('div');
+        div.className = 'assistant-msg ' + (role === 'user' ? 'user' : 'bot');
+        div.textContent = text;
+        box.appendChild(div);
+        box.scrollTop = box.scrollHeight;
+        return div;
+    }
+
+    function speakPtBr(text) {
+        if (!assistantState.tts || !window.speechSynthesis || !text) return;
+        try {
+            window.speechSynthesis.cancel();
+            var u = new SpeechSynthesisUtterance(text);
+            u.lang = 'pt-BR';
+            window.speechSynthesis.speak(u);
+        } catch {}
+    }
+
+    function sendAssistantPrompt(text) {
+        var msg = String(text || '').trim();
+        if (!msg || assistantState.busy) return;
+        assistantState.busy = true;
+        appendAssistantMsg('user', msg);
+        if ($('assistantInput')) $('assistantInput').value = '';
+        var waitEl = appendAssistantMsg('bot', 'Pensando...');
+
+        fetch('/api/crm/assistant', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: msg, history: assistantState.history.slice(-6) })
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (res) {
+                var reply = res.ok ? (res.reply || 'Pronto.') : ('Erro: ' + (res.error || 'falha no assistente'));
+                if (waitEl) waitEl.textContent = reply;
+                assistantState.history.push({ role: 'user', content: msg }, { role: 'assistant', content: reply });
+                speakPtBr(reply);
+                if (res.executed) {
+                    if (res.executed.type === 'search_maps') loadJobs();
+                    if (res.executed.type === 'audit_batch' || res.executed.type === 'start_dispatch' || res.executed.type === 'stop_dispatch') loadCrm();
+                    if (res.executed.type === 'switch_view' && res.executed.view) setView(res.executed.view);
+                }
+            })
+            .catch(function () {
+                if (waitEl) waitEl.textContent = 'Não consegui falar com o assistente agora.';
+            })
+            .finally(function () {
+                assistantState.busy = false;
+            });
+    }
+
+    if ($('assistantFab') && $('assistantBox')) {
+        $('assistantFab').addEventListener('click', function () {
+            $('assistantBox').hidden = !$('assistantBox').hidden;
+            if (!$('assistantBox').hidden && $('assistantInput')) $('assistantInput').focus();
+        });
+    }
+    if ($('assistantClose') && $('assistantBox')) {
+        $('assistantClose').addEventListener('click', function () { $('assistantBox').hidden = true; });
+    }
+    if ($('assistantTts')) {
+        $('assistantTts').addEventListener('click', function () {
+            assistantState.tts = !assistantState.tts;
+            this.textContent = assistantState.tts ? '🔊' : '🔇';
+            if (!assistantState.tts && window.speechSynthesis) window.speechSynthesis.cancel();
+        });
+    }
+    if ($('assistantForm')) {
+        $('assistantForm').addEventListener('submit', function (e) {
+            e.preventDefault();
+            sendAssistantPrompt($('assistantInput') ? $('assistantInput').value : '');
+        });
+    }
+    if ($('assistantChips')) {
+        $('assistantChips').addEventListener('click', function (e) {
+            var btn = e.target.closest('button[data-p]');
+            if (btn) sendAssistantPrompt(btn.getAttribute('data-p'));
+        });
+    }
+    if ($('assistantMic')) {
+        $('assistantMic').addEventListener('click', function () {
+            var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SR) { toast('Use Chrome ou Edge para comando de voz.'); return; }
+            if (assistantState.listening && assistantState.rec) {
+                assistantState.rec.stop();
+                return;
+            }
+            var rec = new SR();
+            rec.lang = 'pt-BR';
+            rec.interimResults = true;
+            rec.maxAlternatives = 1;
+            assistantState.rec = rec;
+            assistantState.listening = true;
+            $('assistantMic').classList.add('listening');
+
+            var finalTxt = '';
+            rec.onresult = function (ev) {
+                var txt = '';
+                for (var i = ev.resultIndex; i < ev.results.length; i++) {
+                    txt += ev.results[i][0].transcript;
+                    if (ev.results[i].isFinal) finalTxt = txt;
+                }
+                if ($('assistantInput')) $('assistantInput').value = txt;
+            };
+            rec.onerror = function () {
+                assistantState.listening = false;
+                $('assistantMic').classList.remove('listening');
+            };
+            rec.onend = function () {
+                assistantState.listening = false;
+                $('assistantMic').classList.remove('listening');
+                var cmd = (finalTxt || ($('assistantInput') ? $('assistantInput').value : '')).trim();
+                if (cmd) sendAssistantPrompt(cmd);
+            };
+            rec.start();
+        });
+    }
+
     // ---------- Ciclo ----------
 
     updateQtyDesc();

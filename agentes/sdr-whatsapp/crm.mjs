@@ -328,36 +328,45 @@ export async function handleCrmRequest(req, res) {
     return true;
   }
 
+function startWorkerDispatch({ keys = [], dryRun = false, forceHorario = true } = {}) {
+  if (workerState.running) return { ok: false, error: "Agente de disparo já está rodando." };
+  const args = [resolve(__dirname, "worker-disparo.mjs")];
+  if (forceHorario) args.push("--force-horario");
+  if (dryRun) args.push("--dry-run");
+  if (keys.length) args.push(`--keys=${keys.join(",")}`);
+
+  workerState.logs = [];
+  workerState.running = true;
+  workerState.startedAt = new Date().toISOString();
+  workerState.lastExitCode = null;
+  pushLog(`▶ Iniciando disparo (${dryRun ? "SIMULAÇÃO" : "REAL"}${keys.length ? ` · ${keys.length} selecionado(s)` : ""})...`);
+
+  const child = spawn(process.execPath, args, { cwd: __dirname, env: process.env });
+  workerState.proc = child;
+  child.stdout.on("data", (d) => pushLog(d.toString("utf8")));
+  child.stderr.on("data", (d) => pushLog(`ERR: ${d.toString("utf8")}`));
+  child.on("close", (code) => {
+    workerState.running = false;
+    workerState.proc = null;
+    workerState.lastExitCode = code;
+    pushLog(`⏹ Disparo finalizado (código ${code}).`);
+  });
+  return { ok: true, running: true };
+}
+
   if (req.method === "POST" && path === "/api/crm/start") {
-    if (workerState.running) {
-      sendJson(res, 409, { error: "Agente de disparo já está rodando." });
+    const body = await readJsonBody(req).catch(() => ({}));
+    const keys = Array.isArray(body.keys) ? body.keys.filter(Boolean) : [];
+    const started = startWorkerDispatch({
+      keys,
+      dryRun: !!body.dryRun,
+      forceHorario: body.forceHorario !== false,
+    });
+    if (!started.ok) {
+      sendJson(res, 409, { error: started.error });
       return true;
     }
-    const body = await readJsonBody(req).catch(() => ({}));
-    const args = [resolve(__dirname, "worker-disparo.mjs")];
-    if (body.forceHorario !== false) args.push("--force-horario");
-    if (body.dryRun) args.push("--dry-run");
-    const keys = Array.isArray(body.keys) ? body.keys.filter(Boolean) : [];
-    if (keys.length) args.push(`--keys=${keys.join(",")}`);
-
-    workerState.logs = [];
-    workerState.running = true;
-    workerState.startedAt = new Date().toISOString();
-    workerState.lastExitCode = null;
-    pushLog(`▶ Iniciando disparo (${body.dryRun ? "SIMULAÇÃO" : "REAL"}${keys.length ? ` · ${keys.length} selecionado(s)` : ""})...`);
-
-    const child = spawn(process.execPath, args, { cwd: __dirname, env: process.env });
-    workerState.proc = child;
-    child.stdout.on("data", (d) => pushLog(d.toString("utf8")));
-    child.stderr.on("data", (d) => pushLog(`ERR: ${d.toString("utf8")}`));
-    child.on("close", (code) => {
-      workerState.running = false;
-      workerState.proc = null;
-      workerState.lastExitCode = code;
-      pushLog(`⏹ Disparo finalizado (código ${code}).`);
-    });
-
-    sendJson(res, 200, { ok: true, running: true });
+    sendJson(res, 200, started);
     return true;
   }
 
@@ -369,6 +378,141 @@ export async function handleCrmRequest(req, res) {
     workerState.proc.kill("SIGTERM");
     pushLog("⏹ Solicitação de parada enviada ao agente...");
     sendJson(res, 200, { ok: true });
+    return true;
+  }
+
+  if (req.method === "POST" && path === "/api/crm/assistant") {
+    try {
+      const body = await readJsonBody(req);
+      const message = String(body.message || "").trim();
+      if (!message) { sendJson(res, 400, { error: "Mensagem vazia" }); return true; }
+      const history = Array.isArray(body.history) ? body.history.slice(-8) : [];
+
+      const db = loadStatus();
+      const allEntries = Object.entries(db.leads || {});
+      const counts = { na_fila: 0, enviado: 0, respondeu: 0, proposto: 0, fechado: 0, descartado: 0 };
+      for (const [, l] of allEntries) counts[l.state] = (counts[l.state] || 0) + 1;
+      const filaList = allEntries
+        .filter(([, l]) => l.state === "na_fila")
+        .sort((a, b) => (b[1].score || 0) - (a[1].score || 0))
+        .slice(0, 15)
+        .map(([, l]) => `#${l.id} ${l.nome} (${l.nicho}, ${l.cidade}, ${l.temSite ? "com site" : "sem site"}${l.instagram ? ", " + l.instagram : ""})`)
+        .join("\n");
+
+      const jobsList = await fetch("http://127.0.0.1:8080/api/v1/jobs")
+        .then((r) => r.ok ? r.json() : [])
+        .then((arr) => (arr || []).slice(0, 8).map((j) => `- ${j.Name} [${j.Status}]`).join("\n"))
+        .catch(() => "");
+
+      const sys = `Você é o Assistente Interno do WiNS Hub Comercial (copiloto de prospecção do William).
+Responda em português, curto e direto, e quando o usuário pedir para executar uma tarefa real, retorne a ação correspondente em JSON válido (sem markdown).
+
+ESTADO AO VIVO:
+- Worker de disparo rodando agora: ${workerState.running ? "SIM" : "NÃO"}
+- CRM: na_fila=${counts.na_fila}, enviado=${counts.enviado}, respondeu=${counts.respondeu}, proposto=${counts.proposto}, fechado=${counts.fechado}, descartado=${counts.descartado}
+- Buscas no Painel:\n${jobsList || "(nenhuma)"}
+- Próximos leads na fila (top 15):\n${filaList || "(fila vazia)"}
+
+AÇÕES DISPONÍVEIS:
+1. {"type":"search_maps","query":"termo de busca","location":"bairro/cidade","maxResults":60} — cria uma nova busca no Google Maps (use maxResults 20, 60 ou 120; padrão 60).
+2. {"type":"audit_batch","limit":5} — audita até N sites de leads no CRM que ainda não foram auditados.
+3. {"type":"start_dispatch","limit":5,"ids":[1039,1040],"dryRun":false} — inicia disparo real no WhatsApp para os IDs citados ou os primeiros "limit" da fila (use dryRun:true só se o usuário pedir simulação/teste).
+4. {"type":"stop_dispatch"} — para o disparo em andamento.
+5. {"type":"switch_view","view":"map"|"board"|"crm"|"dash"} — abre uma aba da ferramenta.
+6. null — apenas responder pergunta sem executar ação.
+
+Formato obrigatório:
+{"reply":"resposta curta para o William","action":null ou objeto}`;
+
+      const msgs = [
+        ...history.map((m) => ({ role: m.role === "assistant" ? "assistant" : "user", content: String(m.content || "") })),
+        { role: "user", content: message },
+      ];
+      const raw = await callClaude({ system: sys, messages: msgs, maxTokens: 420 });
+      const s = raw.indexOf("{");
+      const e = raw.lastIndexOf("}");
+      const parsed = JSON.parse(raw.slice(s, e + 1));
+      let reply = String(parsed.reply || "Feito.");
+      const act = parsed.action || null;
+      let executed = null;
+
+      if (act?.type === "search_maps" && act.query) {
+        const locStr = String(act.location || "São Paulo, SP").trim();
+        let lat = "-23.5505", lon = "-46.6333";
+        try {
+          const geo = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(locStr)}`, {
+            headers: { "User-Agent": "WinsHubAssistant/1.0" },
+          }).then((r) => r.json());
+          if (Array.isArray(geo) && geo[0]) { lat = String(geo[0].lat); lon = String(geo[0].lon); }
+        } catch {}
+        const jobRes = await fetch("http://127.0.0.1:8080/api/v1/jobs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: `${act.query} · ${locStr}`,
+            keywords: [`${act.query} em ${locStr}`],
+            lang: "pt",
+            zoom: 12,
+            lat,
+            lon,
+            radius: 10000,
+            depth: Math.max(1, Math.round((Number(act.maxResults) || 60) / 10)),
+            email: true,
+            max_time: 1800,
+          }),
+        });
+        if (jobRes.ok) {
+          const jd = await jobRes.json();
+          executed = { type: "search_maps", jobId: jd.id || jd.ID };
+          pushLog(`[Assistente] Nova busca criada: ${act.query} · ${locStr}`);
+        } else {
+          reply += " (Não consegui iniciar a busca no motor agora.)";
+        }
+      } else if (act?.type === "audit_batch") {
+        const lim = Math.min(10, Math.max(1, Number(act.limit) || 5));
+        const targets = Object.entries(db.leads || {})
+          .filter(([, l]) => l.temSite && l.site && !/instagram\.com|facebook\.com/i.test(l.site) && !l.siteAudit)
+          .slice(0, lim);
+        for (const [, l] of targets) {
+          const resAudit = await auditSite(l.site, l.nome);
+          l.siteAudit = resAudit;
+          if (!l.instagram && resAudit.instagram) {
+            l.instagram = resAudit.instagram;
+            l.instagramUrl = resAudit.instagramUrl;
+          }
+        }
+        saveStatus(db);
+        executed = { type: "audit_batch", count: targets.length };
+        pushLog(`[Assistente] ${targets.length} sites auditados.`);
+      } else if (act?.type === "start_dispatch") {
+        let keys = [];
+        if (Array.isArray(act.ids) && act.ids.length) {
+          const want = new Set(act.ids.map(Number));
+          keys = allEntries.filter(([, l]) => want.has(l.id) && l.state === "na_fila").map(([k]) => k);
+        } else {
+          const lim = Math.min(18, Math.max(1, Number(act.limit) || 5));
+          keys = allEntries.filter(([, l]) => l.state === "na_fila").slice(0, lim).map(([k]) => k);
+        }
+        if (!keys.length) {
+          reply = "Não encontrei leads na fila para disparar.";
+        } else {
+          const started = startWorkerDispatch({ keys, dryRun: !!act.dryRun, forceHorario: true });
+          if (!started.ok) reply = started.error;
+          else executed = { type: "start_dispatch", count: keys.length };
+        }
+      } else if (act?.type === "stop_dispatch") {
+        if (workerState.running && workerState.proc) {
+          workerState.proc.kill("SIGTERM");
+          executed = { type: "stop_dispatch" };
+        }
+      } else if (act?.type === "switch_view") {
+        executed = { type: "switch_view", view: act.view };
+      }
+
+      sendJson(res, 200, { ok: true, reply, executed });
+    } catch (e) {
+      sendJson(res, 500, { error: e.message });
+    }
     return true;
   }
 

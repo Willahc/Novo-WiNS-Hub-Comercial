@@ -13,7 +13,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&family=Space+Grotesk:wght@600;700&display=swap">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
-    <link rel="stylesheet" href="/static/css/wins.css?v=20261113d">
+    <link rel="stylesheet" href="/static/css/wins.css?v=20261113e">
 </head>
 <body>
     <div id="map"></div>
@@ -363,9 +363,42 @@
         </button>
     </nav>
 
+    <button type="button" class="assistant-fab" id="assistantFab" title="Conversar com Assistente WiNS (Texto ou Voz)">
+        <svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8"/></svg>
+        <span>Assistente</span>
+    </button>
+
+    <aside class="assistant-box" id="assistantBox" hidden>
+        <div class="assistant-head">
+            <div>
+                <div class="t-name">Assistente WiNS</div>
+                <div class="t-sub">Fale ou digite um comando</div>
+            </div>
+            <div class="assistant-head-actions">
+                <button type="button" class="ghost small" id="assistantTts" title="Ler respostas em voz alta">🔇</button>
+                <button type="button" class="ghost small" id="assistantClose">✕</button>
+            </div>
+        </div>
+        <div class="assistant-msgs" id="assistantMsgs">
+            <div class="assistant-msg bot">Olá William! Pode falar ou digitar o que precisa: buscar no Maps, auditar sites, disparar leads da fila ou consultar o funil.</div>
+        </div>
+        <div class="assistant-chips" id="assistantChips">
+            <button type="button" data-p="Como está o funil hoje?">Status do funil</button>
+            <button type="button" data-p="Audite 5 sites da fila">Auditar 5 sites</button>
+            <button type="button" data-p="Busque 60 dentistas em Moema, São Paulo">Buscar dentistas</button>
+        </div>
+        <form class="assistant-form" id="assistantForm">
+            <button type="button" class="assistant-mic" id="assistantMic" title="Falar comando por voz">
+                <svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8"/></svg>
+            </button>
+            <input id="assistantInput" type="text" placeholder="Ex.: Busca 60 clínicas em Pinheiros..." autocomplete="off">
+            <button type="submit" class="primary small" id="assistantSend">Enviar</button>
+        </form>
+    </aside>
+
     <div class="toast" id="toast"></div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-    <script src="/static/js/wins.js?v=20261113i"></script>
+    <script src="/static/js/wins.js?v=20261113j"></script>
 </body>
 </html>
