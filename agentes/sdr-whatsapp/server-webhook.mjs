@@ -11,6 +11,7 @@ import {
 } from "./lib.mjs";
 import { renderPreviewHtml, slugify, detectNiche } from "../entrega/previas/templates.mjs";
 import { handleCrmRequest } from "./crm.mjs";
+import { handleAuthRequest } from "./auth.mjs";
 import { startTelegramBot } from "./telegram-bot.mjs";
 
 loadEnv();
@@ -163,6 +164,7 @@ async function handleIncoming(incoming) {
 }
 
 const server = http.createServer(async (req, res) => {
+  if (await handleAuthRequest(req, res)) return;
   if (await handleCrmRequest(req, res)) return;
 
   if (req.method === "GET" && req.url === "/health") {

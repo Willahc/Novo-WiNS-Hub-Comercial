@@ -8,6 +8,7 @@ agentes/sdr-whatsapp/.env
 agentes/sdr-whatsapp/conversas/
 agentes/sdr-whatsapp/disparos-hoje.json
 agentes/sdr-whatsapp/tg-history.json
+agentes/sdr-whatsapp/.session-secret
 agentes/prospeccao/status.json
 agentes/prospeccao/leads.json
 agentes/prospeccao/fila.md
