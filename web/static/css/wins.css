@@ -792,11 +792,11 @@ td a:hover { text-decoration: underline; }
     top: 16px;
     right: 16px;
     bottom: 16px;
-    width: min(420px, calc(100vw - 32px));
-    background: var(--bg);
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    box-shadow: 0 12px 40px rgba(0,0,0,.12);
+    width: min(440px, calc(100vw - 32px));
+    background: linear-gradient(165deg, #272d38 0%, #181c24 100%);
+    border: 1px solid #3d4556;
+    border-radius: 14px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.09), 0 16px 48px rgba(0,0,0,.55);
     z-index: 1500;
     display: flex;
     flex-direction: column;
@@ -807,28 +807,69 @@ td a:hover { text-decoration: underline; }
 .crm-drawer-head {
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: flex-start;
+    gap: 12px;
     padding-bottom: 12px;
-    border-bottom: 1px solid var(--line);
+    border-bottom: 1px solid #3d4556;
 }
+.crm-drawer-head > button { flex-shrink: 0; }
 .crm-chat {
     flex: 1;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 10px;
+    padding-right: 4px;
 }
 .crm-msg {
-    max-width: 86%;
-    padding: 10px 12px;
-    border-radius: 10px;
+    max-width: 88%;
+    padding: 11px 14px;
+    border-radius: 14px;
     font-size: 13px;
+    line-height: 1.5;
     white-space: pre-wrap;
-    border: 1px solid var(--line);
+    word-break: break-word;
+    border: 1px solid #3d4556;
 }
-.crm-msg.user { align-self: flex-start; background: var(--soft); }
-.crm-msg.assistant { align-self: flex-end; background: var(--ink); color: var(--on-ink); border-color: var(--ink); }
-.crm-msg-at { font-size: 10px; opacity: .65; margin-top: 4px; }
+.crm-msg.user {
+    align-self: flex-start;
+    background: #232934;
+    color: var(--ink);
+    border-bottom-left-radius: 4px;
+}
+.crm-msg.assistant {
+    align-self: flex-end;
+    background: linear-gradient(145deg, #334155 0%, #1e293b 100%);
+    color: #f8fafc;
+    border-color: #475569;
+    border-bottom-right-radius: 4px;
+}
+.crm-msg-at { font-size: 10.5px; opacity: .7; margin-top: 6px; text-align: right; }
+.crm-drawer-actions {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    padding-top: 10px;
+    border-top: 1px solid #3d4556;
+}
+.crm-drawer-actions button {
+    height: 38px;
+    padding: 0 8px;
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.crm-wa-btn {
+    grid-column: 1 / -1;
+    height: 42px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+    border-radius: 10px;
+    font-weight: 600;
+}
 
 .mobile-nav, .mobile-menu-btn, .drawer-backdrop, .drawer-close { display: none; }
 

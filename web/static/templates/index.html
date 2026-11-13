@@ -13,7 +13,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&family=Space+Grotesk:wght@600;700&display=swap">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
-    <link rel="stylesheet" href="/static/css/wins.css?v=20261113b">
+    <link rel="stylesheet" href="/static/css/wins.css?v=20261113c">
 </head>
 <body>
     <div id="map"></div>
@@ -261,11 +261,11 @@
         </div>
         <div class="crm-chat" id="crmChatBody"></div>
         <pre id="crmPropostaBox" class="crm-proposta-box" hidden></pre>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <button type="button" class="ghost small" id="crmAuditOne" style="flex:1">Auditar Site</button>
-            <button type="button" class="ghost small" id="crmLighthouseOne" style="flex:1">Lighthouse (Google)</button>
-            <button type="button" class="ghost small" id="crmGenProposta" style="flex:1">Gerar Proposta (Closer)</button>
-            <a id="crmChatWa" class="primary small" target="_blank" rel="noopener" style="flex:1;text-align:center;text-decoration:none;display:block">Abrir no WhatsApp</a>
+        <div class="crm-drawer-actions">
+            <button type="button" class="ghost small" id="crmAuditOne">Auditar Site</button>
+            <button type="button" class="ghost small" id="crmLighthouseOne">Lighthouse</button>
+            <button type="button" class="ghost small" id="crmGenProposta">Proposta IA</button>
+            <a id="crmChatWa" class="primary small crm-wa-btn" target="_blank" rel="noopener">Abrir no WhatsApp</a>
         </div>
     </aside>
 
