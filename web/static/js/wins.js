@@ -1249,10 +1249,15 @@
                 .then(function (r) { return r.ok ? r.json() : null; })
                 .catch(function () { return null; });
 
-            return Promise.all([Promise.all(jobFetches), crmFetch]);
+            var archFetch = fetch('/api/crm/dashboard-archive')
+                .then(function (r) { return r.ok ? r.json() : null; })
+                .catch(function () { return null; });
+
+            return Promise.all([Promise.all(jobFetches), crmFetch, archFetch]);
         }).then(function (pair) {
             var jobResults = pair[0] || [];
             var crm = pair[1];
+            var arch = pair[2];
             var byKey = {};
             var order = [];
 
@@ -1287,6 +1292,37 @@
                     order.push(row);
                 });
             });
+
+            if (arch && Array.isArray(arch.rows)) {
+                arch.rows.forEach(function (p) {
+                    var key = dashNormKey(p.title, p.phone, p.city);
+                    if (byKey[key]) return;
+                    var sk = siteKind(p.website);
+                    var ig = instagramHandle(p.website);
+                    var wa = whatsappNumber(p.phone);
+                    var row = {
+                        title: p.title || '',
+                        category: p.category || '',
+                        city: p.city || '',
+                        source: p.source || 'Histórico',
+                        jobId: p.jobId || 'arch',
+                        phone: p.phone || '',
+                        wa: wa,
+                        instagram: ig,
+                        instagramUrl: ig ? ('https://www.instagram.com/' + ig.replace(/^@/, '') + '/') : '',
+                        website: sk === 'site' ? p.website : '',
+                        rawSite: p.website || '',
+                        siteKind: sk,
+                        emails: p.emails || '',
+                        rating: Number(p.rating) || 0,
+                        reviews: Number(p.reviews) || 0,
+                        crmState: 'mapeado',
+                        link: p.link || ''
+                    };
+                    byKey[key] = row;
+                    order.push(row);
+                });
+            }
 
             if (crm && Array.isArray(crm.leads)) {
                 crm.leads.forEach(function (l) {
@@ -1332,21 +1368,25 @@
             }
 
             dashState.rows = order;
-            populateDashJobs(jobResults);
+            populateDashJobs(jobResults, arch && arch.files ? arch.files : []);
             renderDash();
         }).finally(function () {
             dashState.loading = false;
         });
     }
 
-    function populateDashJobs(jobResults) {
+    function populateDashJobs(jobResults, archFiles) {
         var sel = $('dashJobFilter');
         if (!sel) return;
         var prev = dashState.job || 'all';
-        var opts = '<option value="all">Todas as buscas (' + (jobResults.length + 1) + ')</option>';
+        var totalSources = jobResults.length + (archFiles ? archFiles.length : 0) + 1;
+        var opts = '<option value="all">Todas as buscas (' + totalSources + ')</option>';
         opts += '<option value="crm">Somente no CRM</option>';
         jobResults.forEach(function (entry) {
             opts += '<option value="' + esc(entry.job.ID) + '">' + esc(entry.job.Name) + ' (' + entry.places.length + ')</option>';
+        });
+        (archFiles || []).forEach(function (f) {
+            opts += '<option value="' + esc(f.id) + '">' + esc(f.name) + '</option>';
         });
         sel.innerHTML = opts;
         sel.value = prev;

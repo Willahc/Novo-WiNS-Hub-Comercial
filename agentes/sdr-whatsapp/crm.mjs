@@ -1,5 +1,5 @@
 // crm.mjs — APIs e controle do Mini-CRM + Start/Stop do worker-disparo
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn, execFile } from "node:child_process";
@@ -98,6 +98,94 @@ function getDailyStats() {
   } catch {
     return { data: hoje, count: 0, max };
   }
+}
+
+let archiveCache = { key: "", data: null };
+function parseSimpleCsv(text) {
+  const firstLine = (text.split(/\r?\n/)[0] || "");
+  const delim = (firstLine.match(/;/g) || []).length > (firstLine.match(/,/g) || []).length ? ";" : ",";
+  const rows = [];
+  let row = [], field = "", inQ = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQ) {
+      if (c === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else inQ = false; }
+      else field += c;
+    } else if (c === '"') inQ = true;
+    else if (c === delim) { row.push(field); field = ""; }
+    else if (c === "\n") { row.push(field); rows.push(row); row = []; field = ""; }
+    else if (c !== "\r") field += c;
+  }
+  if (field || row.length) { row.push(field); rows.push(row); }
+  return rows;
+}
+
+function loadArchiveRows() {
+  if (!existsSync(WEBDATA_DIR)) return { files: [], rows: [] };
+  const csvFiles = readdirSync(WEBDATA_DIR)
+    .filter((f) => f.toLowerCase().endsWith(".csv") && !f.startsWith("wins-hub-"))
+    .sort();
+  const cacheKey = csvFiles.join("|");
+  if (archiveCache.key === cacheKey && archiveCache.data) return archiveCache.data;
+
+  const files = [];
+  const rows = [];
+  for (const fname of csvFiles) {
+    try {
+      const txt = readFileSync(resolve(WEBDATA_DIR, fname), "utf8").replace(/^\uFEFF/, "");
+      const parsed = parseSimpleCsv(txt);
+      if (parsed.length < 2) continue;
+      const hdr = parsed[0].map((h) => h.trim().toLowerCase());
+      const col = (name) => hdr.indexOf(name);
+      const iTitle = col("title"), iCat = col("category"), iAddr = col("address"),
+        iWeb = col("website"), iPhone = col("phone"), iRev = col("review_count"),
+        iRat = col("review_rating"), iLink = col("link"), iEmails = col("emails"),
+        iCompAddr = col("complete_address");
+      if (iTitle === -1) continue;
+
+      const fileRows = [];
+      const catCounts = {};
+      for (let r = 1; r < parsed.length; r++) {
+        const line = parsed[r];
+        const title = (line[iTitle] || "").trim();
+        if (!title) continue;
+        const cat = iCat !== -1 ? (line[iCat] || "").trim() : "";
+        if (cat) catCounts[cat] = (catCounts[cat] || 0) + 1;
+        let city = "";
+        if (iCompAddr !== -1 && line[iCompAddr]) {
+          try {
+            const ca = JSON.parse(line[iCompAddr]);
+            city = ca.city || ca.borough || "";
+          } catch {}
+        }
+        if (!city && iAddr !== -1 && line[iAddr]) {
+          const parts = line[iAddr].split(",");
+          city = (parts[parts.length - 2] || "").replace(/\s*-\s*[A-Z]{2}.*$/, "").trim();
+        }
+        fileRows.push({
+          title,
+          category: cat,
+          city,
+          phone: iPhone !== -1 ? (line[iPhone] || "").trim() : "",
+          website: iWeb !== -1 ? (line[iWeb] || "").trim() : "",
+          emails: iEmails !== -1 ? (line[iEmails] || "").trim() : "",
+          rating: iRat !== -1 ? (parseFloat(line[iRat]) || 0) : 0,
+          reviews: iRev !== -1 ? (parseInt(line[iRev], 10) || 0) : 0,
+          link: iLink !== -1 ? (line[iLink] || "").trim() : "",
+          jobId: "arch:" + fname,
+        });
+      }
+      const topCat = Object.entries(catCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || "Arquivo";
+      const label = `Histórico: ${topCat} (${fileRows.length})`;
+      for (const item of fileRows) {
+        item.source = label;
+        rows.push(item);
+      }
+      files.push({ id: "arch:" + fname, name: label, count: fileRows.length });
+    } catch {}
+  }
+  archiveCache = { key: cacheKey, data: { files, rows } };
+  return archiveCache.data;
 }
 
 export async function handleCrmRequest(req, res) {
@@ -213,6 +301,11 @@ export async function handleCrmRequest(req, res) {
     const phone = url.searchParams.get("phone") || "";
     const msgs = phone ? getConversation(phone) : [];
     sendJson(res, 200, { phone: normalizePhone(phone), messages: msgs });
+    return true;
+  }
+
+  if (req.method === "GET" && path === "/api/crm/dashboard-archive") {
+    sendJson(res, 200, { ok: true, ...loadArchiveRows() });
     return true;
   }
 
