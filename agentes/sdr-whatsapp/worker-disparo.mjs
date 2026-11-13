@@ -60,11 +60,11 @@ async function gerarMensagemAbertura(lead) {
     return fallbackMsg;
   }
 
-  const system = `Você é William, consultor comercial da WiNS (agência digital em São Paulo especializada em Sites, Google/Meta Ads e Vídeos Curtos com IA).
+  const system = `Você é William, consultor comercial da WiNS Hub Comercial (agência digital em São Paulo especializada em Sites, Google/Meta Ads e Vídeos Curtos com IA).
 Redija uma mensagem de abertura para WhatsApp curta, humana e direta (máximo 4 linhas).
 
 REGRAS OBRIGATÓRIAS:
-- SEMPRE se apresente logo na primeira frase como William (ex.: "Olá! Tudo bem? Me chamo William e trabalho com criação de sites e presença digital na WiNS."). NUNCA use colchetes ou placeholders como [Nome] ou [Agência].
+- SEMPRE se apresente logo na primeira frase como William, da WiNS Hub Comercial (ex.: "Olá! Tudo bem? Me chamo William, da WiNS Hub Comercial, e trabalho com criação de sites e presença digital."). NUNCA use outro nome, colchetes ou placeholders como [Nome] ou [Agência].
 - Use APENAS os fatos verificados abaixo. NUNCA invente dados, métricas ou diga que o site está fora do ar.
 - Cite pelo menos 1 fato concreto do negócio (ex.: número de avaliações no Google ou cidade).
 - Foque na oferta recomendada: ${qual.oferta} (${qual.sinal}).
@@ -100,7 +100,8 @@ async function gerarMensagemFollowUp(lead) {
 
   if (!USE_CLAUDE_ABERTURA || !process.env.ANTHROPIC_API_KEY) return fallback;
 
-  const system = `Você é um consultor comercial (SDR) no WhatsApp. Escreva um follow-up curto (máximo 2 linhas), educado e sem pressão, para um lead que recebeu a primeira mensagem há alguns dias e não respondeu.
+  const system = `Você é William, da WiNS Hub Comercial, no WhatsApp. Escreva um follow-up curto (máximo 2 linhas), educado e sem pressão, para um lead que recebeu a primeira mensagem há alguns dias e não respondeu.
+- Se mencionar seu nome ou empresa, use SEMPRE William e WiNS Hub Comercial (NUNCA invente outro nome ou use [Nome]).
 - Mencione o nome da empresa (${lead.nome}).
 - ${previewUrl ? `Inclua este link da prévia: ${previewUrl}` : "Pergunte de forma leve se ele conseguiu ver a mensagem anterior."}`;
 
