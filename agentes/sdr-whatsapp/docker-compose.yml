@@ -1,0 +1,52 @@
+services:
+  evolution-api:
+    image: evoapicloud/evolution-api:latest
+    container_name: wins-evolution-api
+    restart: always
+    ports:
+      - "127.0.0.1:8081:8080"
+    environment:
+      - SERVER_URL=http://127.0.0.1:8081
+      - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY}
+      - DATABASE_ENABLED=true
+      - DATABASE_PROVIDER=postgresql
+      - DATABASE_CONNECTION_URI=postgresql://evolution:${POSTGRES_PASS:-evolution123}@evolution-postgres:5432/evolution
+      - CACHE_REDIS_ENABLED=true
+      - CACHE_REDIS_URI=redis://evolution-redis:6379/6
+      - DEL_INSTANCE=false
+    depends_on:
+      - evolution-postgres
+      - evolution-redis
+    volumes:
+      - evolution_instances:/evolution/instances
+
+  evolution-postgres:
+    image: postgres:15-alpine
+    container_name: wins-evolution-postgres
+    restart: always
+    environment:
+      - POSTGRES_USER=evolution
+      - POSTGRES_PASSWORD=${POSTGRES_PASS:-evolution123}
+      - POSTGRES_DB=evolution
+    volumes:
+      - evolution_pgdata:/var/lib/postgresql/data
+
+  evolution-redis:
+    image: redis:7-alpine
+    container_name: wins-evolution-redis
+    restart: always
+    command: redis-server --appendonly yes
+    volumes:
+      - evolution_redis:/data
+
+volumes:
+  evolution_instances:
+    external: true
+    name: agente-vps_evolution_instances
+  evolution_pgdata:
+    external: true
+    name: agente-vps_evolution_pgdata
+  evolution_redis:
+    external: true
+    name: agente-vps_evolution_redis
+

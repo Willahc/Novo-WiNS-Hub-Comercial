@@ -1,0 +1,5 @@
+[
+  {"cid":"05","title":"Odonto Vitale","category":"Dentista","categories":["Dentista"],"address":"R. XV, 800 , Santa Maria, RS","complete_address":{"city":"Santa Maria"},"phone":"+55 55 99333-2222","web_site":"","review_count":41,"review_rating":4.6,"emails":[]},
+  {"cid":"06","title":"Clínica Bem Estar","category":"Clínica médica","categories":["Clínica médica"],"address":"Av. Brasil, 50 , Santa Maria, RS","complete_address":{"city":"Santa Maria"},"phone":"+55 55 99111-3333","web_site":"","review_count":120,"review_rating":4.9,"emails":["contato@bemestar.com.br"]},
+  {"cid":"07","title":"Salão Raiz Negra","category":"Salão de beleza","categories":["Salão de beleza"],"address":"R. do Comércio, 12 , Santa Maria, RS","complete_address":{"city":"Santa Maria"},"phone":"+55 55 99777-8888","web_site":"https://raiznegra.com.br","review_count":68,"review_rating":4.7,"emails":[]}
+]

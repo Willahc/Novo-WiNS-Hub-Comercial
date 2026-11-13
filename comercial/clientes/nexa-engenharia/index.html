@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nexa Engenharia e Projetos | Projetos elétricos, estruturais e regularização em São Paulo</title>
+<meta name="description" content="Projetos e instalações elétricas, estruturais e laudos técnicos em São Paulo. ART assinada, aprovação de primeira na concessionária e obra sem parar. Orçamento em 24h.">
+<meta property="og:title" content="Nexa Engenharia — Seu projeto aprovado na primeira tentativa">
+<meta property="og:description" content="Engenheiros responsáveis, ART garantida e regularização sem dor de cabeça. São Paulo - SP.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Montserrat:wght@700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --verde:#2F9E44; --verde-escuro:#25753A; --verde-claro:#E8F5EC;
+  --grafite:#0F1216; --grafite-2:#1A1F26; --off-white:#FAFAF7;
+  --cinza:#5C6672; --borda:#E4E7EB;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{font-family:'Inter',sans-serif;color:var(--grafite);background:var(--off-white);line-height:1.6}
+h1,h2,h3{font-family:'Montserrat',sans-serif;line-height:1.2}
+img{max-width:100%;display:block}
+a{text-decoration:none;color:inherit}
+.container{max-width:1100px;margin:0 auto;padding:0 20px}
+section{padding:64px 0}
+.btn{display:inline-block;padding:14px 28px;border-radius:8px;font-weight:600;font-size:16px;transition:.2s;cursor:pointer;border:none}
+.btn-verde{background:var(--verde);color:#fff}
+.btn-verde:hover{background:var(--verde-escuro);transform:translateY(-2px)}
+.btn-ghost{background:transparent;color:#fff;border:2px solid rgba(255,255,255,.4)}
+.btn-ghost:hover{border-color:#fff}
+
+/* NAV */
+nav{position:sticky;top:0;z-index:100;background:rgba(15,18,22,.92);backdrop-filter:blur(8px)}
+.nav-in{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;max-width:1100px;margin:0 auto}
+.logo{display:flex;align-items:center;gap:10px;color:#fff;font-family:'Montserrat';font-weight:800;font-size:18px}
+.logo-n{width:38px;height:38px;background:var(--verde);border-radius:8px;display:grid;place-items:center;color:#fff;font-size:20px;font-family:'Montserrat'}
+.nav-links{display:none;gap:28px;color:#CBD2D9;font-size:14px}
+.nav-links a:hover{color:#fff}
+.nav-cta{padding:10px 18px;font-size:14px}
+@media(min-width:860px){.nav-links{display:flex}}
+
+/* HERO */
+.hero{background:linear-gradient(135deg,var(--grafite) 0%,var(--grafite-2) 100%);color:#fff;padding:72px 0;position:relative;overflow:hidden}
+.hero::after{content:"";position:absolute;right:-120px;top:-120px;width:420px;height:420px;border:2px solid rgba(47,158,68,.25);border-radius:50%}
+.hero::before{content:"";position:absolute;right:-40px;top:-40px;width:240px;height:240px;border:2px solid rgba(47,158,68,.35);border-radius:50%;z-index:1}
+.hero-grid{display:grid;gap:40px;position:relative;z-index:2}
+.tag{display:inline-block;background:rgba(47,158,68,.18);color:#7FD995;padding:6px 14px;border-radius:100px;font-size:13px;font-weight:600;margin-bottom:20px}
+.hero h1{font-size:clamp(30px,5.5vw,46px);font-weight:800;margin-bottom:18px}
+.hero h1 span{color:var(--verde)}
+.hero p{color:#B8C0C9;font-size:18px;max-width:520px;margin-bottom:28px}
+.hero-ctas{display:flex;flex-direction:column;gap:12px}
+@media(min-width:560px){.hero-ctas{flex-direction:row}}
+.hero-prova{display:flex;gap:24px;margin-top:36px;flex-wrap:wrap}
+.prova-item{border-left:3px solid var(--verde);padding-left:12px}
+.prova-item strong{font-size:24px;font-family:'Montserrat';display:block}
+.prova-item span{font-size:13px;color:#B8C0C9}
+.hero-card{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:26px;backdrop-filter:blur(4px)}
+.hero-card h3{color:#7FD995;font-size:14px;letter-spacing:.08em;text-transform:uppercase;margin-bottom:14px}
+.hero-card ul{list-style:none}
+.hero-card li{padding:10px 0;border-bottom:1px solid rgba(255,255,255,.08);font-size:15px;color:#E4E9ED}
+.hero-card li::before{content:"✓";color:var(--verde);font-weight:700;margin-right:10px}
+
+/* FAIXA */
+.faixa{background:var(--verde-escuro);color:#fff;padding:14px 0;font-size:14px;text-align:center;font-weight:500}
+
+/* SERVIÇOS */
+.sec-head{text-align:center;max-width:640px;margin:0 auto 48px}
+.sec-head .kicker{color:var(--verde-escuro);font-weight:700;font-size:13px;letter-spacing:.1em;text-transform:uppercase}
+.sec-head h2{font-size:clamp(26px,4vw,36px);margin:10px 0 14px}
+.sec-head p{color:var(--cinza)}
+.grid-svc{display:grid;gap:20px}
+@media(min-width:760px){.grid-svc{grid-template-columns:repeat(3,1fr)}}
+.svc{background:#fff;border:1px solid var(--borda);border-radius:14px;padding:28px;transition:.25s}
+.svc:hover{transform:translateY(-4px);box-shadow:0 12px 30px rgba(15,18,22,.08);border-color:var(--verde)}
+.svc-icon{width:48px;height:48px;border-radius:10px;background:var(--verde-claro);display:grid;place-items:center;margin-bottom:18px;font-size:22px}
+.svc h3{font-size:17px;margin-bottom:10px}
+.svc p{color:var(--cinza);font-size:14.5px}
+
+/* PROCESSO */
+.processo{background:#fff}
+.passos{display:grid;gap:20px;counter-reset:passo}
+@media(min-width:760px){.passos{grid-template-columns:repeat(4,1fr)}}
+.passo{position:relative;padding-top:8px}
+.passo::before{counter-increment:passo;content:"0" counter(passo);font-family:'Montserrat';font-weight:800;font-size:44px;color:var(--verde-claro);-webkit-text-stroke:1.5px var(--verde);display:block}
+.passo h3{font-size:16px;margin:12px 0 8px}
+.passo p{color:var(--cinza);font-size:14px}
+
+/* PROVA SOCIAL */
+.metricas{display:grid;gap:20px;margin-bottom:56px}
+@media(min-width:760px){.metricas{grid-template-columns:repeat(4,1fr)}}
+.metric{text-align:center;background:#fff;border:1px solid var(--borda);border-radius:14px;padding:28px 16px}
+.metric strong{font-size:34px;font-family:'Montserrat';font-weight:800;color:var(--verde-escuro);display:block}
+.metric span{font-size:13.5px;color:var(--cinza)}
+.depo{background:#fff;border:1px solid var(--borda);border-left:4px solid var(--verde);border-radius:12px;padding:24px;max-width:720px;margin:0 auto}
+.depo q{font-size:16.5px;font-style:italic}
+.depo footer{margin-top:14px;font-size:13.5px;color:var(--cinza)}
+
+/* FAQ */
+.faq{max-width:720px;margin:0 auto}
+.faq-item{background:#fff;border:1px solid var(--borda);border-radius:12px;margin-bottom:12px;overflow:hidden}
+.faq-item details{padding:0}
+.faq-item summary{padding:18px 22px;font-weight:600;cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center}
+.faq-item summary::after{content:"+";font-size:22px;color:var(--verde);transition:.2s}
+.faq-item details[open] summary::after{transform:rotate(45deg)}
+.faq-item div{padding:0 22px 18px;color:var(--cinza);font-size:14.5px}
+
+/* CTA FINAL */
+.cta-final{background:linear-gradient(135deg,var(--verde-escuro),var(--verde));color:#fff;text-align:center}
+.cta-final h2{font-size:clamp(26px,4vw,36px);margin-bottom:14px}
+.cta-final p{opacity:.9;max-width:520px;margin:0 auto 28px}
+.btn-branco{background:#fff;color:var(--verde-escuro)}
+.btn-branco:hover{transform:translateY(-2px);box-shadow:0 10px 30px rgba(0,0,0,.2)}
+
+/* FOOTER */
+footer{background:var(--grafite);color:#8A939E;padding:40px 0;font-size:14px}
+.foot-in{display:flex;flex-direction:column;gap:12px;align-items:center;text-align:center}
+@media(min-width:760px){.foot-in{flex-direction:row;justify-content:space-between;text-align:left}}
+
+/* WHATSAPP FLUTUANTE */
+.wa-float{position:fixed;bottom:20px;right:20px;z-index:200;width:58px;height:58px;border-radius:50%;background:#25D366;display:grid;place-items:center;box-shadow:0 6px 20px rgba(37,211,102,.45);transition:.2s}
+.wa-float:hover{transform:scale(1.08)}
+.wa-float svg{width:30px;height:30px;fill:#fff}
+
+/* DEMO BANNER */
+.demo-banner{background:#B45309;color:#fff;padding:8px 16px;text-align:center;font-size:12.5px}
+</style>
+</head>
+<body>
+
+<div class="demo-banner">⚡ <strong>Site de demonstração</strong> — dados fictícios criados para apresentação. [SUBSTITUIR] marca o que depende do cliente.</div>
+
+<nav>
+  <div class="nav-in">
+    <a class="logo" href="#"><span class="logo-n">N</span>NEXA<span style="font-weight:400">ENG</span></a>
+    <div class="nav-links">
+      <a href="#servicos">Serviços</a>
+      <a href="#processo">Como funciona</a>
+      <a href="#resultados">Resultados</a>
+      <a href="#faq">Dúvidas</a>
+    </div>
+    <a class="btn btn-verde nav-cta" href="https://wa.me/55119XXXXXXXX?text=Ol%C3%A1!%20Preciso%20de%20um%20or%C3%A7amento%20para%20projeto/laudo">Orçamento em 24h</a>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="container hero-grid">
+    <div>
+      <span class="tag">SÃO PAULO - SP · RESPONSÁVEL TÉCNICO COM ART</span>
+      <h1>Seu projeto aprovado <span>na primeira tentativa</span> — ou nós ajustamos sem custo.</h1>
+      <p>Projetos elétricos, estruturais e laudos técnicos para condomínios, comércios e indústrias em São Paulo. Obra sem parar por falta de documentação.</p>
+      <div class="hero-ctas">
+        <a class="btn btn-verde" href="https://wa.me/55119XXXXXXXX?text=Ol%C3%A1!%20Gostaria%20de%20receber%20um%20or%C3%A7amento.">Receber orçamento pelo WhatsApp</a>
+        <a class="btn btn-ghost" href="#servicos">Ver serviços</a>
+      </div>
+      <div class="hero-prova">
+        <div class="prova-item"><strong>320+</strong><span>projetos entregues</span></div>
+        <div class="prova-item"><strong>98%</strong><span>aprovação de primeira</span></div>
+        <div class="prova-item"><strong>24h</strong><span>prazo para orçamento</span></div>
+      </div>
+    </div>
+    <aside class="hero-card">
+      <h3>O que você recebe em todo projeto</h3>
+      <ul>
+        <li>ART assinada por engenheiro responsável</li>
+        <li>Verificação prévia das exigências da concessionária</li>
+        <li>Entrega em PDF pronto para protocolo</li>
+        <li>Suporte até a aprovação final — incluso</li>
+        <li>Responsabilidade técnica registrada em contrato</li>
+      </ul>
+    </aside>
+  </div>
+</header>
+
+<div class="faixa">⚡ Resposta em até 24h úteis · Visita técnica agendada pelo próprio WhatsApp</div>
+
+<section id="servicos">
+  <div class="container">
+    <div class="sec-head">
+      <span class="kicker">Serviços</span>
+      <h2>Tudo que sua obra precisa de engenharia, em um lugar</h2>
+      <p>Sem juntar três fornecedores diferentes para resolver um projeto.</p>
+    </div>
+    <div class="grid-svc">
+      <article class="svc">
+        <div class="svc-icon">⚡</div>
+        <h3>Projetos e Instalações Elétricas</h3>
+        <p>Predial e industrial: quadros, aterramento, SPDA e adequação à NBR 5410. Dimensionamento e memorial descritivo completos.</p>
+      </article>
+      <article class="svc">
+        <div class="svc-icon">📐</div>
+        <h3>Projeto Estrutural e Laudos</h3>
+        <p>Projetos de concreto armado, reforço estrutural e laudos técnicos com ART — prontos para prefeitura e seguradora.</p>
+      </article>
+      <article class="svc">
+        <div class="svc-icon">📋</div>
+        <h3>Regularização e Alvarás</h3>
+        <p>Trap entre sua obra e a prefeitura: habite-se, alvará de funcionamento e adequação junto às concessionárias.</p>
+      </article>
+      <article class="svc">
+        <div class="svc-icon">🏗️</div>
+        <h3>Gerenciamento de Obras</h3>
+        <p>Fiscalização, medição e controle de qualidade de obras de pequeno e médio porte — você acompanha tudo no WhatsApp.</p>
+      </article>
+      <article class="svc">
+        <div class="svc-icon">💧</div>
+        <h3>Instalações Hidráulicas</h3>
+        <p>Projetos hidrossanitários, reuso e drenagem — mesmo padrão de qualidade, mesmo responsável técnico.</p>
+      </article>
+      <article class="svc">
+        <div class="svc-icon">🔥</div>
+        <h3>Prevenção Contra Incêndio</h3>
+        <p>PPCI completo e acompanhamento na vistoria do Corpo de Bombeiros. Sem susto no último mês da obra.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section id="processo" class="processo">
+  <div class="container">
+    <div class="sec-head">
+      <span class="kicker">Como funciona</span>
+      <h2>Do primeiro contato à aprovação em 4 passos</h2>
+    </div>
+    <div class="passos">
+      <div class="passo"><h3>Diagnóstico gratuito</h3><p>Você manda o que tem (planta, foto, descrição do problema) pelo WhatsApp e recebe avaliação em 24h.</p></div>
+      <div class="passo"><h3>Proposta fechada</h3><p>Escopo, prazo e valor definidos por escrito. Sem "depois a gente vê" nem cobrança surpresa.</p></div>
+      <div class="passo"><h3>Projeto executado</h3><p>Engenheiro responsável executa com verificação prévia das exigências do órgão aprovador.</p></div>
+      <div class="passo"><h3>Aprovação acompanhada</h3><p>Protocolamos, acompanhamos e corrigimos o que for preciso até o carimbo verde.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="resultados">
+  <div class="container">
+    <div class="sec-head">
+      <span class="kicker">Resultados</span>
+      <h2>Números de quem faz isso todos os dias</h2>
+      <p>[SUBSTITUIR pelos dados reais do cliente — abaixo, cifras de exemplo]</p>
+    </div>
+    <div class="metricas">
+      <div class="metric"><strong>320+</strong><span>projetos e laudos entregues</span></div>
+      <div class="metric"><strong>98%</strong><span>aprovação sem emenda</span></div>
+      <div class="metric"><strong>12 anos</strong><span>de atuação em SP</span></div>
+      <div class="metric"><strong>7 dias</strong><span>prazo médio de entrega</span></div>
+    </div>
+    <blockquote class="depo">
+      <q>Adequamos a instalação elétrica de 3 prédios com a Nexa. Projeto aprovado sem nenhuma emenda na concessionária — coisa que a gente nunca tinha conseguido antes.</q>
+      <footer>— [SUBSTITUIR: nome, cargo e condomínio/empresa real]</footer>
+    </blockquote>
+  </div>
+</section>
+
+<section id="faq" class="processo">
+  <div class="container">
+    <div class="sec-head">
+      <span class="kicker">Dúvidas</span>
+      <h2>O que todo mundo pergunta antes de contratar</h2>
+    </div>
+    <div class="faq">
+      <div class="faq-item"><details open><summary>Vocês assinam a ART?</summary><div>Sim. Cada projeto sai com Anotação de Responsabilidade Técnica registrada no CREA-SP, emitida em nome do engenheiro responsável do time.</div></details></div>
+      <div class="faq-item"><details><summary>Quanto custa um projeto?</summary><div>Depende do porte e da complexidade. O orçamento é gratuito e sai em até 24h úteis — manda a planta ou uma descrição pelo WhatsApp que já devolvemos o valor fechado.</div></details></div>
+      <div class="faq-item"><details><summary>Se a prefeitura exigir emenda, paga a mais?</summary><div>Não. Emendas e ajustes de exigência estão inclusos até a aprovação final. É literalmente o compromisso do escopo.</div></details></div>
+      <div class="faq-item"><details><summary>Atendem fora de São Paulo capital?</summary><div>Sim — Grande SP e cidades do interior mediante agendamento. Consulta rápida pelo WhatsApp confirma disponibilidade na sua região.</div></details></div>
+      <div class="faq-item"><details><summary>Consigo contratar só o laudo, sem obra?</summary><div>Claro. Laudo técnico, parecer e dictame são serviços independentes — mesmo com entrega em até 5 dias úteis.</div></details></div>
+    </div>
+  </div>
+</section>
+
+<section class="cta-final">
+  <div class="container">
+    <h2>Tenha seu projeto aprovado e obra andando</h2>
+    <p>Mande a descrição do que você precisa agora — a avaliação inicial é gratuita e sai em 24h úteis.</p>
+    <a class="btn btn-branco" href="https://wa.me/55119XXXXXXXX?text=Ol%C3%A1!%20Quero%20a%20avalia%C3%A7%C3%A3o%20gratuita.">Falar agora no WhatsApp</a>
+  </div>
+</section>
+
+<footer>
+  <div class="container foot-in">
+    <div><strong style="color:#fff">Nexa Engenharia e Projetos</strong><br>CREA-SP [SUBSTITUIR nº] · São Paulo - SP</div>
+    <div>[SUBSTITUIR: telefone] · contato@nexaengenharia.com.br</div>
+    <div>© 2026 Nexa Engenharia. Todos os direitos reservados.</div>
+  </div>
+</footer>
+
+<a class="wa-float" href="https://wa.me/55119XXXXXXXX?text=Ol%C3%A1!%20Vim%20pelo%20site." aria-label="Falar no WhatsApp">
+  <svg viewBox="0 0 32 32"><path d="M16 3a13 13 0 0 0-11.2 19.6L3 29l6.6-1.7A13 13 0 1 0 16 3zm0 23.5c-2 0-3.9-.5-5.5-1.5l-.4-.2-4 1 1-3.9-.2-.4A10.5 10.5 0 1 1 16 26.5zm5.8-7.8c-.3-.2-1.9-1-2.2-1.1-.3-.1-.5-.2-.7.2-.2.3-.8 1-1 1.2-.2.2-.4.2-.7.1-.3-.2-1.3-.5-2.5-1.5-.9-.8-1.6-1.9-1.8-2.2-.2-.3 0-.5.1-.7l.5-.6c.2-.2.2-.3.3-.5.1-.2 0-.5 0-.6l-1-2.4c-.2-.6-.5-.5-.7-.5h-.6c-.2 0-.5.1-.8.4-.3.3-1 1-1 2.4s1 2.8 1.2 3c.2.2 2.1 3.2 5.1 4.4.7.3 1.3.5 1.7.6.7.2 1.4.2 1.9.1.6-.1 1.9-.8 2.1-1.5.3-.8.3-1.4.2-1.5-.1-.2-.3-.3-.6-.4z"/></svg>
+</a>
+
+</body>
+</html>

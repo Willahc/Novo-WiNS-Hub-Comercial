@@ -1,0 +1,6 @@
+[
+  {"cid":"01","title":"Clínica Odontológica Sorriso Real","category":"Dentista","categories":["Dentista","Local"],"address":"Av. Principal, 123 - Centro, Santa Maria, RS","complete_address":{"city":"Santa Maria"},"phone":"+55 55 99999-1234","web_site":"","review_count":87,"review_rating":4.8,"emails":["contato@sorrisoreal.com.br"]},
+  {"cid":"02","title":"Imobiliária Chave de Ouro","category":"Imobiliária","categories":["Imobiliária"],"address":"Rua das Flores, 456 , Porto Alegre, RS","complete_address":{"city":"Porto Alegre"},"phone":"+55 51 98888-7777","web_site":"https://chavedeouro.com.br","review_count":32,"review_rating":4.6,"emails":[]},
+  {"cid":"03","title":"Pizzaria Nonna Rosa","category":"Restaurante","categories":["Restaurante","Pizzaria"],"address":"R. Vermelha, 200 , Caxias do Sul, RS","complete_address":{"city":"Caxias do Sul"},"phone":"+55 54 91234-5678","web_site":"","review_count":5,"review_rating":4.2,"emails":[]},
+  {"cid":"04","title":"Studio Fisio Vida","category":"Fisioterapia","categories":["Fisioterapia"],"address":"R. Central, 77 , Santa Rosa, RS","complete_address":{"city":"Santa Rosa"},"phone":"+55 55 3222-0000","web_site":"https://fisiovida.com.br","review_count":210,"review_rating":4.9,"emails":["contato@fisiovida.com.br"]}
+]

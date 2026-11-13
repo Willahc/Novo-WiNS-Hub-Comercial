@@ -1,28 +1,29 @@
 # WiNS Hub Comercial — estado do projeto
 
-Última atualização: 10/11/2026
+Última atualização: 13/11/2026
 
-Este é o fork do `google-maps-scraper` publicado como serviço em
+Este é o fork do `google-maps-scraper` publicado como serviço unificado em
 **https://winshubcomercial.com.br**. O documento resume onde a aplicação roda,
 como publicar mudanças e o que já foi entregue.
 
 ## O que é
 
-Interface web em português (painel + mapa Leaflet) que busca empresas no Google
-Maps por tipo de empresa e/ou CNAE, em uma localidade, e entrega os resultados em
-CSV. Cada busca vira um job persistido em SQLite.
+Plataforma unificada em português composta por:
+1. **WiNS Hub (Scraper)**: painel + mapa Leaflet que busca empresas no Google Maps por tipo de empresa e/ou CNAE e exporta/envia os resultados.
+2. **CRM & Agentes (`/crm`)**: monitoramento de leads, conversas, métricas por nicho, logs ao vivo e botão de Start/Stop do disparo cadenciado.
+3. **Agente SDR WhatsApp + Prévias**: Evolution API (`wins-comercial`) + Claude (`claude-sonnet-4-6`) + prévias personalizadas por nicho (`/previa/<slug>`) + handoff no Telegram (`@WiNSHubBot`).
 
 ## Onde roda
 
 | Item | Valor |
 |------|-------|
-| Servidor web | `187.127.253.42` (Hostinger, Ubuntu 24.04, 1 vCPU, 3,8 GB) |
-| App | container `deploy-winshub-1`, imagem `winshub:latest`, `127.0.0.1:8080` |
-| Entrada | Nginx 1.24 + Let's Encrypt (válido até 08/02/2027) + basic auth |
-| Banco | SQLite `jobs.db` no volume Docker `deploy_winshub_data` |
-| Postgres | instância separada em `2.25.162.199` (não usada nesta variante) |
-| Concorrência | 1 job por vez (`WINSHUB_CONCURRENCY=1` no `.env` do servidor) |
-| Acesso | usuário `wins` (senha definida com `deploy/definir-senha.sh`) |
+| Servidor unificado | `187.53.110.26` (Ubuntu, 2 vCPUs, 7,8 GiB RAM, 90 GB livres) |
+| App Scraper | container `deploy-winshub-1`, imagem `winshub:latest`, `127.0.0.1:8080`, `WINSHUB_CONCURRENCY=1` |
+| Agente & CRM | serviço systemd `wins-webhook.service` (`127.0.0.1:3005`, `agentes/sdr-whatsapp/server-webhook.mjs`) |
+| Disparo | `wins-disparo.service` + `wins-disparo.timer` (ou acionado pelo botão Start em `/crm`) |
+| WhatsApp | Evolution API (`wins-evolution-api` em `127.0.0.1:8081` + Postgres + Redis) |
+| Entrada | Nginx 1.24 + Let's Encrypt (válido até 10/02/2027) + basic auth (`wins`) |
+| Banco | SQLite `jobs.db` no volume `deploy_winshub_data` + `agentes/prospeccao/status.json` |
 
 SSH:
 
@@ -68,6 +69,10 @@ Detalhes de operação (logs, backup, restauração, HTTPS): `deploy/README.md`.
   - `GET /api/v1/cnae/{code}` devolve `cnae`, `atividade` e `termo`;
     `POST /api/v1/jobs` aceita `keywords` vazio quando vem `cnae`.
   - Aceita `4711-3/02`, `4711302`, `4711-3` e `4711` (prefixo cai para a classe).
+- **Reorganização do projeto**: pastas `agentes/` (`prospeccao/`, `sdr-whatsapp/`, `closer/`, `entrega/`), `skills/`, `comercial/`, `tools/` e `docs/wins/`.
+- **Prévias personalizadas por nicho**: `agentes/entrega/previas/templates.mjs` serve páginas HTML mobile-first em `https://winshubcomercial.com.br/previa/<slug>` (público, sem senha) para Veterinário, Academia, B2B e Geral.
+- **Mini-CRM & Controle de Agentes (`/crm`)**: integrado na aba `CRM` do WiNS Hub + botão `Enviar para Agentes` no Painel, com KPIs, desempenho por nicho, histórico de conversas, logs ao vivo e Start/Stop do disparo.
+- **Qualificação inteligente & filtro `onWhatsApp`**: `checkWhatsApp()` valida números na Evolution API antes do disparo e `qualificarLead()` escolhe a oferta (Site + Prévia, Site + Vídeos IA ou Ads + Vídeos IA) com regras anti-alucinação.
 
 ## Correções que já foram necessárias
 

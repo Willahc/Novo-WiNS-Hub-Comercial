@@ -607,6 +607,10 @@
             b.classList.toggle('on', b.getAttribute('data-view') === v);
         });
         $('board').hidden = v !== 'board';
+        if ($('crmView')) $('crmView').hidden = v !== 'crm';
+        if (v === 'crm' && $('crmFrame') && !$('crmFrame').getAttribute('src')) {
+            $('crmFrame').setAttribute('src', '/crm');
+        }
         renderLive();
         if (v === 'board') renderBoard();
     }
@@ -623,17 +627,22 @@
         return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
     }
 
-    // Planilha no padrão do Excel brasileiro: ponto e vírgula, vírgula decimal e BOM.
-    function download(rows) {
-        if (!state.selected || !rows.length) return;
+    function buildCsvContent(rows) {
+        var cnae = (state.selected && state.selected.Data && state.selected.Data.cnae) || '';
         var head = ['Empresa', 'Categoria', 'Telefone', 'WhatsApp', 'Site', 'E-mail', 'Nota', 'Avaliações', 'Bairro', 'Cidade', 'Endereço', 'Google Maps', 'CNAE'];
         var lines = [head.join(';')].concat(rows.map(function (p) {
             var wa = whatsapp(p.phone);
             return [p.title, p.category, p.phone, wa ? 'https://wa.me/' + wa : '', p.website, p.emails,
-                p.review_rating ? rating(p.review_rating) : '', p.review_count || '', p.borough, p.city, p.address, p.link, p.cnae || '']
+                p.review_rating ? rating(p.review_rating) : '', p.review_count || '', p.borough, p.city, p.address, p.link, p.cnae || cnae]
                 .map(csvCell).join(';');
         }));
-        var blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+        return '\uFEFF' + lines.join('\r\n');
+    }
+
+    // Planilha no padrão do Excel brasileiro: ponto e vírgula, vírgula decimal e BOM.
+    function download(rows) {
+        if (!state.selected || !rows.length) return;
+        var blob = new Blob([buildCsvContent(rows)], { type: 'text/csv;charset=utf-8' });
         var a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
         a.download = 'wins-hub-' + slug(state.selected.Name) + '-' + new Date().toISOString().slice(0, 10) + '.csv';
@@ -644,6 +653,35 @@
 
     $('download').addEventListener('click', function () { download(filtered()); });
     $('liveDownload').addEventListener('click', function () { download(state.places); });
+
+    if ($('sendToCrm')) {
+        $('sendToCrm').addEventListener('click', function () {
+            var rows = filtered();
+            if (!state.selected || !rows.length) return;
+            var btn = this;
+            btn.disabled = true;
+            btn.textContent = 'Enviando...';
+            fetch('/api/crm/import-csv', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    filename: 'wins-hub-' + slug(state.selected.Name) + '.csv',
+                    csvContent: buildCsvContent(rows),
+                    limit: 30
+                })
+            })
+                .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || 'Erro'); return j; }); })
+                .then(function () {
+                    toast(rows.length + ' leads enviados para a fila dos agentes');
+                    if ($('crmFrame') && $('crmFrame').getAttribute('src')) $('crmFrame').src = '/crm';
+                })
+                .catch(function (e) { toast('Falha ao enviar para o CRM: ' + e.message); })
+                .then(function () {
+                    btn.disabled = false;
+                    btn.textContent = 'Enviar para Agentes';
+                });
+        });
+    }
 
     $('copyPhones').addEventListener('click', function () {
         var phones = filtered().map(function (p) { return p.phone; }).filter(Boolean);

@@ -1,0 +1,8 @@
+{
+  // Dados de VOCÊ (a agência) — usados em toda proposta gerada.
+  // Copie este arquivo para meus-dados.json na raiz agencia-ia\ e preencha.
+  // Campos: nome, telefone (com WhatsApp), pix.
+  "nome": "[SEU NOME]",
+  "telefone": "[SEU TELEFONE / WHATSAPP]",
+  "pix": "[SUA CHAVE PIX]"
+}

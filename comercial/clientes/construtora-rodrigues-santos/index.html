@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Construtora Rodrigues Santos | Obras industriais, manutenção e obras públicas</title>
+<meta name="description" content="Construtora em Mogi Guaçu, SP, executando obras e manutenção industrial para Heineken, PepsiCo e Hydro. Equipe própria, NR-35, SPDA e instalações. Orçamento em 24h.">
+<link rel="canonical" href="https://willahc.github.io/construtora-rodrigues-santos/">
+<meta property="og:title" content="Construtora Rodrigues Santos — Obras e manutenção para quem não pode parar">
+<meta property="og:description" content="Heineken, PepsiCo e Hydro confiam na nossa equipe própria.">
+<meta property="og:image" content="https://willahc.github.io/construtora-rodrigues-santos/assets/img/hero.jpg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Montserrat:wght@700;800&display=swap" rel=stylesheet>
+<style>
+:root{
+  --verde:#3D6B45; --verde-escuro:#2A4A30; --verde-claro:#EDF3EE;
+  --grafite:#14181A; --off-white:#FAF8F5; --cinza:#5A6360; --borda:#E2E6E2;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{font-family:'Inter',sans-serif;color:var(--grafite);background:var(--off-white);line-height:1.6}
+h1,h2,h3{font-family:'Montserrat',sans-serif;line-height:1.25}
+img{max-width:100%;display:block}
+a{text-decoration:none;color:inherit}
+.container{max-width:1100px;margin:0 auto;padding:0 20px}
+section{padding:64px 0}
+.btn{display:inline-block;padding:14px 26px;border-radius:8px;font-weight:600;font-size:16px;border:none;transition:.2s}
+.btn-verde{background:var(--verde);color:#fff}
+.btn-verde:hover{background:var(--verde-escuro);transform:translateY(-2px)}
+.btn-ghost{background:transparent;color:#fff;border:2px solid rgba(255,255,255,.4)}
+.btn-ghost:hover{border-color:#fff}
+/* NAV */
+nav{position:sticky;top:0;z-index:100;background:rgba(20,24,26,.93);backdrop-filter:blur(8px)}
+.nav-in{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;max-width:1100px;margin:0 auto;gap:14px}
+nav img{max-height:52px;width:auto}
+.nav-cta{padding:10px 16px;font-size:14px;white-space:nowrap}
+/* HERO */
+.hero{background:linear-gradient(rgba(20,24,26,.72),rgba(20,24,26,.82)),url('https://willahc.github.io/construtora-rodrigues-santos/assets/img/hero.jpg') center/cover;color:#fff;padding:88px 0}
+.tag{display:inline-block;background:rgba(255,255,255,.14);padding:6px 14px;border-radius:100px;font-size:13px;font-weight:600;margin-bottom:20px}
+.hero h1{font-size:clamp(30px,5.2vw,46px);margin-bottom:16px;max-width:640px}
+.hero h1 span{color:#A3C9AA}
+.hero p{color:#CDD5D1;font-size:18px;max-width:540px;margin-bottom:26px}
+.hero-ctas{display:flex;gap:12px;flex-wrap:wrap}
+.hero-clientes{margin-top:34px;font-size:14px;color:#AEB8B3}
+.hero-clientes strong{color:#fff}
+/* FAIXA */
+.faixa{background:var(--verde-escuro);color:#fff;padding:13px 0;font-size:14px;text-align:center;font-weight:500}
+/* HEADS */
+.sec-head{max-width:640px;margin:0 auto 44px;text-align:center}
+.kicker{color:var(--verde);font-weight:700;font-size:13px;letter-spacing:.1em;text-transform:uppercase}
+.sec-head h2{font-size:clamp(26px,4vw,36px);margin:10px 0 12px}
+.sec-head p{color:var(--cinza)}
+/* CLIENTES */
+.clientes{background:#fff}
+.logos{display:flex;flex-wrap:wrap;gap:36px;justify-content:center;align-items:center}
+.logos img{max-height:56px;filter:grayscale(30%);opacity:.85}
+/* SERVIÇOS */
+.grid-svc{display:grid;gap:20px}
+@media(min-width:760px){.grid-svc{grid-template-columns:repeat(2,1fr)}}
+.svc{background:#fff;border:1px solid var(--borda);border-radius:14px;padding:26px;transition:.25s}
+.svc:hover{border-color:var(--verde);transform:translateY(-3px);box-shadow:0 12px 28px rgba(20,24,26,.07)}
+.svc h3{font-size:17px;margin-bottom:12px;display:flex;align-items:center;gap:10px}
+.svc-num{color:var(--verde);font-weight:800;font-size:13px;background:var(--verde-claro);border-radius:6px;padding:3px 8px}
+.svc ul{list-style:none}
+.svc li{padding:6px 0;font-size:14.5px;color:var(--cinza);border-bottom:1px dashed var(--borda)}
+.svc li::before{content:"▸";color:var(--verde);margin-right:8px;font-weight:700}
+/* OBRAS */
+.grid-obras{display:grid;gap:16px}
+@media(min-width:560px){.grid-obras{grid-template-columns:repeat(2,1fr)}}
+@media(min-width:900px){.grid-obras{grid-template-columns:repeat(3,1fr)}}
+.obra{position:relative;border-radius:14px;overflow:hidden;aspect-ratio:4/3;background:#ddd}
+.obra img{width:100%;height:100%;object-fit:cover;transition:.4s}
+.obra:hover img{transform:scale(1.05)}
+.obra-cap{position:absolute;inset:auto 0 0 0;background:linear-gradient(transparent,rgba(20,24,26,.88));color:#fff;padding:34px 16px 14px;font-size:14px}
+.obra-cap strong{font-family:'Montserrat';display:block}
+/* DIFERENCIAIS */
+.difs{display:grid;gap:18px;margin-top:36px}
+@media(min-width:760px){.difs{grid-template-columns:repeat(3,1fr)}}
+.dif{background:#fff;border:1px solid var(--borda);border-top:4px solid var(--verde);border-radius:12px;padding:22px}
+.dif h3{font-size:16px;margin-bottom:8px}
+.dif p{font-size:14px;color:var(--cinza)}
+/* NR35 */
+.nr35{background:var(--grafite);color:#fff}
+.nr35 .kicker{color:#A3C9AA}
+.nr35-grid{display:grid;gap:32px;align-items:center}
+@media(min-width:860px){.nr35-grid{grid-template-columns:1fr 1fr}}
+.nr35 h2{font-size:clamp(24px,3.6vw,34px);margin:10px 0 14px}
+.nr35 p{color:#B9C2BD;margin-bottom:20px}
+.nr35 ul{list-style:none}
+.nr35 li{padding:9px 0;border-bottom:1px solid rgba(255,255,255,.12);font-size:15px}
+.nr35 li::before{content:"✓";color:#7FBF8C;font-weight:700;margin-right:10px}
+.nr35 img{border-radius:14px}
+/* CONTATO */
+.cta-final{background:var(--verde-escuro);color:#fff;text-align:center}
+.cta-final h2{font-size:clamp(26px,4vw,36px);margin-bottom:12px}
+.cta-final p{opacity:.9;max-width:560px;margin:0 auto 26px}
+.cta-btns{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+.btn-branco{background:#fff;color:var(--verde-escuro)}
+.btn-branco:hover{transform:translateY(-2px);box-shadow:0 10px 30px rgba(0,0,0,.2)}
+/* FOOTER */
+footer{background:var(--grafite);color:#98A29D;padding:36px 0;font-size:14px}
+/* WHATSAPP FLUTUANTE */
+.wa-float{position:fixed;bottom:20px;right:20px;z-index:200;width:58px;height:58px;border-radius:50%;background:#25D366;display:grid;place-items:center;box-shadow:0 6px 20px rgba(37,211,102,.45);transition:.2s}
+.wa-float:hover{transform:scale(1.08)}
+.wa-float svg{width:30px;height:30px;fill:#fff}
+.demo-banner{background:#B45309;color:#fff;padding:8px 16px;text-align:center;font-size:12.5px}
+</style>
+</head>
+<body id="topo">
+
+<div class="demo-banner">⚡ <strong>Versão demonstrativa</strong> criada para apresentação — fotos e contatos do site oficial da Construtora Rodrigues Santos.</div>
+
+<nav>
+  <div class="nav-in">
+    <a href="#topo"><img src="https://willahc.github.io/construtora-rodrigues-santos/assets/img/logo-moss.png" alt="Construtora Rodrigues Santos"></a>
+    <a class="btn btn-verde nav-cta" href="https://wa.me/5511983485444?text=Ol%C3%A1!%20Vim%20pelo%20site%20e%20gostaria%20de%20um%20or%C3%A7amento." target="_blank" rel="noopener">Solicitar orçamento</a>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="container">
+    <span class="tag">CONSTRUÇÃO CIVIL · MANUTENÇÃO INDUSTRIAL · OBRAS PÚBLICAS</span>
+    <h1>Obras e manutenção <span>para quem não pode parar</span></h1>
+    <p>Da fundação ao acabamento — equipe própria, acompanhamento técnico e clientes como Heineken, PepsiCo e Hydro. Atendemos indústrias, empresas e obras públicas em Mogi Guaçu, Itu, Salto e Sorocaba.</p>
+    <div class="hero-ctas">
+      <a class="btn btn-verde" href="https://wa.me/5511983485444?text=Ol%C3%A1!%20Gostaria%20de%20solicitar%20um%20or%C3%A7amento." target="_blank" rel="noopener">Falar no WhatsApp agora</a>
+      <a class="btn btn-ghost" href="#obras">Ver obras executadas</a>
+    </div>
+    <div class="hero-clientes"><strong>Equipe própria</strong> · Segurança em altura NR-35 · <strong>Heineken · PepsiCo · Hydro · Eucatex · SAAE</strong></div>
+  </div>
+</header>
+
+<div class="faixa">📐 Orçamento em até 24h · Visita técnica agendada direto pelo WhatsApp</div>
+
+<section class="clientes">
+  <div class="container">
+    <div class="sec-head" style="margin-bottom:28px">
+      <span class="kicker">Quem já contratou</span>
+      <h2>Referência em unidades industriais de grande porte</h2>
+    </div>
+    <div class="logos">
+      <img src="https://willahc.github.io/construtora-rodrigues-santos/assets/img/cliente-heineken.png" alt="Heineken">
+      <img src="https://willahc.github.io/construtora-rodrigues-santos/assets/img/cliente-pepsico.png" alt="PepsiCo">
+      <img src="https://willahc.github.io/construtora-rodrigues-santos/assets/img/cliente-hydro.png" alt="Hydro">
+      <img src="https://willahc.github.io/construtora-rodrigues-santos/assets/img/cliente-eucatex.png" alt="Eucatex">
+      <img src="https://willahc.github.io/construtora-rodrigues-santos/assets/img/cliente-saae.png" alt="SAAE">
+    </div>
+  </div>
+</section>
+
+<section id="servicos">
+  <div class="container">
+    <div class="sec-head">
+      <span class="kicker">Serviços</span>
+      <h2>Uma equipe própria para cada etapa da obra</h2>
+      <p>Escopo fechado, cronograma e responsável técnico — do levantamento à entrega.</p>
+    </div>
+    <div class="grid-svc">
+      <article class="svc"><h3><span class="svc-num">01</span>Engenharia e gestão</h3>
+        <ul><li>Consultoria e gerenciamento de projetos</li><li>Construção civil</li><li>Montagens industriais</li><li>Demarcação viária</li></ul>
+      </article>
+      <article class="svc"><h3><span class="svc-num">02</span>Estrutura e alvenaria</h3>
+        <ul><li>Fundação e concreto armado</li><li>Demolição, escavação, contenção e pavimentação</li><li>Alvenarias, drywall e steel frame</li><li>Execução e manutenção de coberturas</li></ul>
+      </article>
+      <article class="svc"><h3><span class="svc-num">03</span>Instalações</h3>
+        <ul><li>Elétrica, hidráulica, sensores e alarmes</li><li>SPDA, CFTV e AVCB</li><li>Impermeabilização e tratamentos</li><li>Rede de esgoto</li></ul>
+      </article>
+      <article class="svc"><h3><span class="svc-num">04</span>Acabamentos e manutenção</h3>
+        <ul><li>Gesso, revestimentos e pinturas</li><li>Esquadrias em aço, alumínio, madeira e PVC</li><li>Marcenaria e limpeza predial</li><li>Serviços em altura · NR-35</li></ul>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section id="obras" style="background:#fff">
+  <div class="container">
+    <div class="sec-head">
+      <span class="kicker">Obras</span>
+      <h2>Serviços executados que provam o padrão</h2>
+      <p>Seleção de frentes reais — indústrias, órgãos públicos e residenciais.</p>
+    </div>
+    <div class="grid-obras">
+      <figure class="obra"><img src="https://willahc.github.io/construtora-rodrigues-santos/assets/img/obra-heineken-1.jpg" alt="Instalações elétricas e reforma em unidade Heineken, Itu"><figcaption class="obra-cap"><strong>Heineken · Itu</strong>Instalações e ambientes corporativos</figcaption></figure>
+      <figure class="obra"><img src="https://willahc.github.io/construtora-rodrigues-santos/assets/img/obra-pepsico-1.jpg" alt="Demarcação de piso e pintura PepsiCo"><figcaption class="obra-cap"><strong>PepsiCo · Itu e Sorocaba</strong>Manutenção, pintura e demarcação</figcaption></figure>
+      <figure class="obra"><img src="https://willahc.github.io/construtora-rodrigues-santos/assets/img/obra-hydro-1.jpg" alt="Manutenção em telhado industrial Hydro"><figcaption class="obra-cap"><strong>Hydro</strong>Manutenção em telhados industriais</figcaption></figure>
+      <figure class="obra"><img src="https://willahc.github.io/construtora-rodrigues-santos/assets/img/obra-eucatex-1.jpg" alt="Pavimento intertravado em unidade Eucatex"><figcaption class="obra-cap"><strong>Eucatex</strong>Pavimentação e infraestrutura</figcaption></figure>
+      <figure class="obra"><img src="https://willahc.github.io/construtora-rodrigues-santos/assets/img/obra-saae-1.jpg" alt="Rede de esgoto SAAE Salto"><figcaption class="obra-cap"><strong>SAAE · Salto</strong>Rede de esgoto e apoio estrutural</figcaption></figure>
+      <figure class="obra"><img src="https://willahc.github.io/construtora-rodrigues-santos/assets/img/obra-pracas-1.jpg" alt="Praça pública construída"><figcaption class="obra-cap"><strong>Prefeitura municipal</strong>Praças e áreas de convivência</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<section id="nr35" class="nr35">
+  <div class="container nr35-grid">
+    <div>
+      <span class="kicker">Segurança</span>
+      <h2>Trabalho em altura com procedimento, não com improviso</h2>
+      <p>Serviços em telhados, coberturas industriais e fachadas executados com equipe habilitada e equipamentos inspecionados.</p>
+      <ul>
+        <li>NR-35 · trabalho em altura</li>
+        <li>Procedimentos e análise de risco</li>
+        <li>Equipe habilitada e equipamentos inspecionados</li>
+      </ul>
+    </div>
+    <img src="https://willahc.github.io/construtora-rodrigues-santos/assets/img/altura.jpg" alt="Serviço em altura com equipe habilitada">
+  </div>
+</section>
+
+<section id="diferenciais">
+  <div class="container">
+    <div class="sec-head">
+      <span class="kicker">A empresa</span>
+      <h2>Engenharia com gente que resolve</h2>
+      <p>Início, meio e fim da obra com a mesma equipe. Sem trocar de fornecedor a cada etapa.</p>
+    </div>
+    <div class="difs">
+      <div class="dif"><h3>Equipe própria</h3><p>Times fixos de civil, elétrica e acabamento — quem vai à obra conhece o padrão da obra.</p></div>
+      <div class="dif"><h3>Acompanhamento técnico</h3><p>Escopo, cronograma e medição acompanhados de perto, com repasse claro para você.</p></div>
+      <div class="dif"><h3>Segurança em altura</h3><p>Procedimentos, análise de risco e equipe NR-35 — a indústria não para e ninguém se expõe.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="contato" class="cta-final">
+  <div class="container">
+    <h2>Vamos construir juntos?</h2>
+    <p>Conte o que precisa e o comercial responde em até 24h com visita técnica — Mogi Guaçu, Itu, Salto, Sorocaba e região.</p>
+    <div class="cta-btns">
+      <a class="btn btn-branco" href="https://wa.me/5511983485444?text=Ol%C3%A1!%20Vim%20pelo%20site%20e%20gostaria%20de%20um%20or%C3%A7amento." target="_blank" rel="noopener">WhatsApp do comercial</a>
+      <a class="btn btn-ghost" href="mailto:comercial@construtorarodriguessantos.com.br">comercial@construtorarodriguessantos.com.br</a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="container" style="display:flex;flex-wrap:wrap;gap:14px;justify-content:space-between">
+    <div><strong style="color:#fff">Construtora Rodrigues Santos</strong><br>Mogi Guaçu · SP — atendemos Itu, Salto e Sorocaba</div>
+    <div>(11) 98348-5444 · (19) 99218-8447<br>comercial@construtorarodriguessantos.com.br · <a href="https://www.instagram.com/construtora_rodriguessantos/" style="color:#A3C9AA">Instagram ↗</a></div>
+  </div>
+</footer>
+
+<a class="wa-float" href="https://wa.me/5511983485444?text=Ol%C3%A1!%20Vim%20pelo%20site%20e%20gostaria%20de%20um%20or%C3%A7amento." target="_blank" rel="noopener" aria-label="Falar no WhatsApp">
+  <svg viewBox="0 0 32 32"><path d="M16 3a13 13 0 0 0-11.2 19.6L3 29l6.6-1.7A13 13 0 1 0 16 3zm0 23.5c-2 0-3.9-.5-5.5-1.5l-.4-.2-4 1 1-3.9-.2-.4A10.5 10.5 0 1 1 16 26.5zm5.8-7.8c-.3-.2-1.9-1-2.2-1.1-.3-.1-.5-.2-.7.2-.2.3-.8 1-1 1.2-.2.2-.4.2-.7.1-.3-.2-1.3-.5-2.5-1.5-.9-.8-1.6-1.9-1.8-2.2-.2-.3 0-.5.1-.7l.5-.6c.2-.2.2-.3.3-.5.1-.2 0-.5 0-.6l-1-2.4c-.2-.6-.5-.5-.7-.5h-.6c-.2 0-.5.1-.8.4-.3.3-1 1-1 2.4s1 2.8 1.2 3c.2.2 2.1 3.2 5.1 4.4.7.3 1.3.5 1.7.6.7.2 1.4.2 1.9.1.6-.1 1.9-.8 2.1-1.5.3-.8.3-1.4.2-1.5-.1-.2-.3-.3-.6-.4z"/></svg>
+</a>
+
+</body>
+</html>

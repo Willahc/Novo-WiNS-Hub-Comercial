@@ -4,6 +4,14 @@ vendor
 bin
 webdata/
 agencia-ia/
+agentes/sdr-whatsapp/.env
+agentes/sdr-whatsapp/conversas/
+agentes/sdr-whatsapp/disparos-hoje.json
+agentes/prospeccao/status.json
+agentes/prospeccao/leads.json
+agentes/prospeccao/fila.md
+agentes/entrega/previas/geradas/
+comercial/meus-dados.json
 *.exe
 *.db
 *.log

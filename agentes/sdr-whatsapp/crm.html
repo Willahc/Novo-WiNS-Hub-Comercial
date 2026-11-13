@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CRM &amp; Controle de Agentes — WiNS Hub Comercial</title>
+  <style>
+    :root {
+      --bg: #0b0d12;
+      --card: #131722;
+      --border: #23293a;
+      --text: #f3f4f6;
+      --muted: #9ca3af;
+      --green: #10b981;
+      --blue: #3b82f6;
+      --amber: #f59e0b;
+      --red: #ef4444;
+      --purple: #8b5cf6;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 20px;
+      line-height: 1.5;
+    }
+    .wrap { max-width: 1280px; margin: 0 auto; }
+    .top {
+      display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center;
+      gap: 14px; margin-bottom: 22px; padding-bottom: 16px; border-bottom: 1px solid var(--border);
+    }
+    h1 { font-size: 20px; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+    .pill {
+      font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px;
+      background: #1f2937; color: var(--muted);
+    }
+    .pill.run { background: rgba(16,185,129,.18); color: var(--green); }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    button, .btn {
+      border: 1px solid var(--border); background: var(--card); color: var(--text);
+      padding: 9px 14px; border-radius: 8px; font-size: 13px; font-weight: 600;
+      cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 6px;
+    }
+    button:hover { border-color: #4b5563; }
+    button:disabled { opacity: .45; cursor: not-allowed; }
+    .btn-go { background: var(--green); border-color: var(--green); color: #052e16; }
+    .btn-stop { background: var(--red); border-color: var(--red); color: #fff; }
+    .btn-blue { background: var(--blue); border-color: var(--blue); color: #fff; }
+
+    .kpis {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 12px; margin-bottom: 20px;
+    }
+    .kpi {
+      background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px;
+    }
+    .kpi-v { font-size: 26px; font-weight: 800; }
+    .kpi-l { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+    .grid2 {
+      display: grid; grid-template-columns: 1.2fr .8fr; gap: 16px; margin-bottom: 20px;
+    }
+    @media (max-width: 960px) { .grid2 { grid-template-columns: 1fr; } }
+
+    .panel {
+      background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px;
+    }
+    .panel h2 { font-size: 14px; font-weight: 700; margin-bottom: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+    pre.logs {
+      background: #07090d; border: 1px solid var(--border); border-radius: 8px;
+      padding: 12px; height: 210px; overflow-y: auto; font-size: 12px;
+      font-family: ui-monospace, monospace; color: #d1d5db; white-space: pre-wrap;
+    }
+
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 600; font-size: 12px; }
+    tr:hover td { background: rgba(255,255,255,.02); }
+
+    .toolbar {
+      display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center;
+      gap: 10px; margin-bottom: 12px;
+    }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip { padding: 5px 10px; border-radius: 999px; font-size: 12px; background: #1a2030; border: 1px solid var(--border); cursor: pointer; }
+    .chip.on { background: var(--blue); border-color: var(--blue); color: #fff; }
+    input[type="text"], select {
+      background: #0b0d12; color: var(--text); border: 1px solid var(--border);
+      border-radius: 8px; padding: 7px 11px; font-size: 13px;
+    }
+    .st {
+      display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700;
+    }
+    .st-na_fila { background: rgba(156,163,175,.15); color: #d1d5db; }
+    .st-enviado { background: rgba(59,130,246,.2); color: #93c5fd; }
+    .st-respondeu { background: rgba(245,158,11,.2); color: #fcd34d; }
+    .st-proposto { background: rgba(139,92,246,.25); color: #c4b5fd; }
+    .st-fechado { background: rgba(16,185,129,.22); color: #6ee7b7; }
+    .st-descartado { background: rgba(239,68,68,.18); color: #fca5a5; }
+
+    .drawer {
+      position: fixed; top: 0; right: 0; width: min(460px, 100%); height: 100vh;
+      background: #111520; border-left: 1px solid var(--border); padding: 20px;
+      display: none; flex-direction: column; z-index: 100; box-shadow: -10px 0 30px rgba(0,0,0,.5);
+    }
+    .drawer.open { display: flex; }
+    .chat { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; margin: 14px 0; }
+    .msg { padding: 10px 12px; border-radius: 10px; font-size: 13px; max-width: 88%; white-space: pre-wrap; }
+    .msg.assistant { background: #1e293b; align-self: flex-end; }
+    .msg.user { background: #0f766e; align-self: flex-start; }
+    .msg-at { font-size: 10px; opacity: .65; margin-top: 4px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <h1>
+        WiNS Hub · CRM &amp; Agentes
+        <span class="pill" id="workerBadge">Parado</span>
+      </h1>
+      <div class="actions">
+        <label class="btn" style="cursor:pointer">
+          📤 Importar CSV do WiNS Hub
+          <input type="file" id="csvInput" accept=".csv" hidden>
+        </label>
+        <button id="btnDryRun">🧪 Simular (Dry-Run)</button>
+        <button class="btn-go" id="btnStart">▶ Start Disparo</button>
+        <button class="btn-stop" id="btnStop" hidden>⏹ Parar</button>
+        <a class="btn" href="/previas" target="_blank">🌐 Ver Prévias</a>
+      </div>
+    </div>
+
+    <div class="kpis" id="kpis"></div>
+
+    <div class="grid2">
+      <div class="panel">
+        <h2>Logs ao vivo do agente</h2>
+        <pre class="logs" id="logsBox">Aguardando execução...</pre>
+      </div>
+      <div class="panel">
+        <h2>Desempenho por nicho</h2>
+        <div style="max-height:210px;overflow-y:auto">
+          <table>
+            <thead><tr><th>Nicho</th><th>Fila</th><th>Env.</th><th>Resp.</th><th>Fech.</th></tr></thead>
+            <tbody id="nicheBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="toolbar">
+        <div class="chips" id="filterChips">
+          <button class="chip on" data-st="all">Todos</button>
+          <button class="chip" data-st="na_fila">Na fila</button>
+          <button class="chip" data-st="enviado">Enviado</button>
+          <button class="chip" data-st="respondeu">Respondeu</button>
+          <button class="chip" data-st="proposto">Proposto (Ok!)</button>
+          <button class="chip" data-st="fechado">Fechado</button>
+          <button class="chip" data-st="descartado">Descartado</button>
+        </div>
+        <input type="text" id="searchBox" placeholder="Buscar empresa, nicho ou cidade...">
+      </div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead>
+            <tr>
+              <th>Empresa</th>
+              <th>Nicho / Cidade</th>
+              <th>Status</th>
+              <th>Msgs</th>
+              <th>Prévia</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody id="leadsBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="drawer" id="drawer">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <strong id="chatTitle">Conversa</strong>
+        <div id="chatSub" style="font-size:12px;color:var(--muted)"></div>
+      </div>
+      <button onclick="closeDrawer()">✕</button>
+    </div>
+    <div class="chat" id="chatBody"></div>
+    <div style="display:flex;gap:8px">
+      <a id="chatWa" class="btn btn-blue" target="_blank" style="flex:1;justify-content:center">Abrir no WhatsApp</a>
+    </div>
+  </div>
+
+  <script>
+    let data = null;
+    let currentFilter = 'all';
+
+    function esc(s) {
+      return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    async function load() {
+      const r = await fetch('/api/crm/overview');
+      if (!r.ok) return;
+      data = await r.json();
+      render();
+    }
+
+    function render() {
+      const c = data.counts;
+      const enviadosTotal = c.enviado + c.visualizado + c.respondeu + c.proposto + c.fechado;
+      const respTotal = c.respondeu + c.proposto + c.fechado;
+      const taxaResp = enviadosTotal ? Math.round((respTotal / enviadosTotal) * 100) : 0;
+
+      document.getElementById('kpis').innerHTML = [
+        [c.na_fila, 'Na fila'],
+        [`${data.daily.count} / ${data.daily.max}`, 'Disparos hoje'],
+        [`${respTotal} (${taxaResp}%)`, 'Responderam'],
+        [c.proposto, 'Handoffs (Ok!)'],
+        [c.fechado, 'Fechados'],
+        [c.total, 'Total na base']
+      ].map(([v, l]) => `<div class="kpi"><div class="kpi-v">${esc(v)}</div><div class="kpi-l">${esc(l)}</div></div>`).join('');
+
+      const running = data.worker.running;
+      const badge = document.getElementById('workerBadge');
+      badge.textContent = running ? 'Disparando...' : 'Pronto';
+      badge.className = 'pill' + (running ? ' run' : '');
+      document.getElementById('btnStart').disabled = running;
+      document.getElementById('btnDryRun').disabled = running;
+      document.getElementById('btnStop').hidden = !running;
+
+      const logsBox = document.getElementById('logsBox');
+      logsBox.textContent = data.worker.logs.length ? data.worker.logs.join('\n') : 'Nenhuma execução nesta sessão.';
+      logsBox.scrollTop = logsBox.scrollHeight;
+
+      document.getElementById('nicheBody').innerHTML = data.byNiche.map(n =>
+        `<tr><td>${esc(n.nicho)}</td><td>${n.na_fila}</td><td>${n.enviados}</td><td>${n.respostas}</td><td>${n.fechados}</td></tr>`
+      ).join('');
+
+      const q = document.getElementById('searchBox').value.trim().toLowerCase();
+      const filtered = data.leads.filter(l => {
+        if (currentFilter !== 'all' && l.state !== currentFilter) return false;
+        if (q && !`${l.nome} ${l.nicho} ${l.cidade}`.toLowerCase().includes(q)) return false;
+        return true;
+      });
+
+      document.getElementById('leadsBody').innerHTML = filtered.map(l => `
+        <tr>
+          <td>
+            <strong>${esc(l.nome)}</strong><br>
+            <span style="font-size:11px;color:var(--muted)">Score ${l.score} · ${l.avaliacoes} aval. · ${l.temSite ? 'Com site' : 'Sem site'}</span>
+          </td>
+          <td>${esc(l.nicho)}<br><span style="font-size:11px;color:var(--muted)">${esc(l.cidade)}</span></td>
+          <td><span class="st st-${esc(l.state)}">${esc(l.state)}</span></td>
+          <td><button onclick="openChat('${esc(l.telefone)}','${esc(l.nome)}','${esc(l.nicho)}')">💬 ${l.msgCount}</button></td>
+          <td><a class="btn" href="${esc(l.previewUrl)}" target="_blank">Ver prévia</a></td>
+          <td>
+            <select onchange="setStatus('${esc(l.key)}', this.value)">
+              ${['na_fila','enviado','respondeu','proposto','fechado','descartado'].map(s =>
+                `<option value="${s}" ${l.state === s ? 'selected' : ''}>${s}</option>`
+              ).join('')}
+            </select>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    async function setStatus(key, state) {
+      await fetch('/api/crm/lead/status', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ key, state })
+      });
+      load();
+    }
+
+    async function openChat(phone, nome, nicho) {
+      document.getElementById('chatTitle').textContent = nome;
+      document.getElementById('chatSub').textContent = `${nicho} · ${phone}`;
+      document.getElementById('chatWa').href = `https://wa.me/${phone}`;
+      const r = await fetch(`/api/crm/conversation?phone=${encodeURIComponent(phone)}`);
+      const d = await r.json();
+      document.getElementById('chatBody').innerHTML = d.messages.length
+        ? d.messages.map(m => `<div class="msg ${m.role === 'assistant' ? 'assistant' : 'user'}">${esc(m.content)}<div class="msg-at">${new Date(m.at).toLocaleString('pt-BR')}</div></div>`).join('')
+        : '<div style="color:var(--muted);font-size:13px">Nenhuma mensagem trocada ainda.</div>';
+      document.getElementById('drawer').classList.add('open');
+    }
+    function closeDrawer() { document.getElementById('drawer').classList.remove('open'); }
+
+    document.getElementById('btnStart').onclick = async () => {
+      if (!confirm('Iniciar disparos REAIS no WhatsApp agora?')) return;
+      await fetch('/api/crm/start', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ dryRun: false, forceHorario: true }) });
+      load();
+    };
+    document.getElementById('btnDryRun').onclick = async () => {
+      await fetch('/api/crm/start', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ dryRun: true, forceHorario: true }) });
+      load();
+    };
+    document.getElementById('btnStop').onclick = async () => {
+      await fetch('/api/crm/stop', { method: 'POST' });
+      load();
+    };
+    document.getElementById('csvInput').onchange = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const csvContent = await file.text();
+      const r = await fetch('/api/crm/import-csv', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ filename: file.name, csvContent, limit: 25 })
+      });
+      const d = await r.json();
+      alert(d.ok ? 'CSV importado e fila atualizada!' : ('Erro: ' + d.error));
+      e.target.value = '';
+      load();
+    };
+    document.getElementById('filterChips').onclick = (e) => {
+      const b = e.target.closest('[data-st]');
+      if (!b) return;
+      currentFilter = b.dataset.st;
+      document.querySelectorAll('#filterChips .chip').forEach(c => c.classList.toggle('on', c === b));
+      render();
+    };
+    document.getElementById('searchBox').oninput = render;
+
+    load();
+    setInterval(load, 3000);
+  </script>
+</body>
+</html>
+

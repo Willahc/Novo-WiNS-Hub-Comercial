@@ -1,7 +1,7 @@
 {
   "$schema": "https://opencode.ai/config.json",
   // Registra a agência completa (skills + pdf oficial da Anthropic) neste workspace
-  "skills": ["./agencia-ia/skills"],
+  "skills": ["./skills"],
   // harken: transcrição de áudio 100% local (whisper.cpp embutido, offline).
   // Permite transcrever áudios/mensagens de voz de clientes durante a sessão.
   // Modelo é baixado no primeiro uso (ou rode: harken warm).

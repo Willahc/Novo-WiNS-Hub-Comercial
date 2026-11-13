@@ -26,6 +26,7 @@
             <div class="seg" id="viewSeg">
                 <button type="button" data-view="map" class="on">Mapa</button>
                 <button type="button" data-view="board">Painel</button>
+                <button type="button" data-view="crm">CRM</button>
             </div>
         </header>
 
@@ -141,6 +142,7 @@
                 </div>
                 <div class="board-actions">
                     <button type="button" class="ghost" id="copyPhones">Copiar telefones</button>
+                    <button type="button" class="ghost" id="sendToCrm">Enviar para Agentes</button>
                     <button type="button" class="primary small" id="download">Baixar planilha</button>
                 </div>
             </div>
@@ -174,6 +176,10 @@
                 </table>
             </div>
         </div>
+    </main>
+
+    <main class="board" id="crmView" hidden style="padding:0">
+        <iframe id="crmFrame" title="CRM &amp; Agentes" style="width:100%;height:100%;border:0;background:#0b0d12"></iframe>
     </main>
 
     <div class="toast" id="toast"></div>
