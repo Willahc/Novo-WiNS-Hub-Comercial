@@ -1,0 +1,19 @@
+{
+  "name": "WiNS Hub Comercial",
+  "short_name": "WiNS Hub",
+  "description": "Prospecção B2B, Prévias e CRM WhatsApp",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#0f1219",
+  "background_color": "#0f1219",
+  "icons": [
+    {
+      "src": "/static/img/wins-simbolo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
+

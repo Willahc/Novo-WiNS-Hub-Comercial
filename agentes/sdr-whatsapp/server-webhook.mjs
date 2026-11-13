@@ -1,13 +1,17 @@
 #!/usr/bin/env node
 // server-webhook.mjs — Recebe respostas do WhatsApp (Evolution API), conversa com Claude até o "Ok!" e faz handoff no Telegram
 
+import fs from "node:fs";
 import http from "node:http";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   loadEnv, loadStatus, saveStatus, findLeadByPhone, normalizePhone, qualificarLead,
-  getConversation, appendConversation, sendWhatsAppText, callClaude, notifyTelegram,
+  getConversation, appendConversation, sendWhatsAppText, callClaude, notifyTelegram, logActivity,
 } from "./lib.mjs";
 import { renderPreviewHtml, slugify, detectNiche } from "../entrega/previas/templates.mjs";
 import { handleCrmRequest } from "./crm.mjs";
+import { startTelegramBot } from "./telegram-bot.mjs";
 
 loadEnv();
 
@@ -30,9 +34,15 @@ REGRAS CRÍTICAS:
 Responda EXCLUSIVAMENTE em JSON válido, sem markdown ao redor:
 {
   "acao": "responder" | "handoff" | "descartar",
+  "interesse": true | false,
+  "motivo_interesse": "explicação curta do porquê demonstrou interesse ou precisa do humano (vazio se interesse=false)",
   "resposta": "mensagem curta para enviar no WhatsApp",
   "resumo_handoff": "resumo do que o cliente quer (site, ads, vídeo) e por que deu Ok (preencher só se acao=handoff)"
-}`;
+}
+
+Critério para "interesse":
+- true: cliente perguntou preço/como funciona/prazos, comentou positivamente a prévia, pediu para conversar, ou fez pergunta que precisa de atenção humana.
+- false: apenas saudação automática ("Olá, como posso ajudar?"), resposta vaga/fria ou recusa.`;
 
 function extractIncoming(payload) {
   // Suporta payload padrão da Evolution API v2 (evento messages.upsert)
@@ -66,6 +76,7 @@ async function handleIncoming(incoming) {
   // Conversas pessoais ou clientes antigos no mesmo WhatsApp Business são 100% ignorados pela IA.
   if (!match) {
     console.log(`[IGNORADO] Mensagem de ${incoming.phone} não está em status.json.`);
+    logActivity("SDR", `⏭️ Ignorado ${incoming.phone} (não está na fila)`);
     return;
   }
 
@@ -81,6 +92,7 @@ async function handleIncoming(incoming) {
   }
 
   const history = appendConversation(incoming.phone, "user", incoming.text);
+  logActivity("SDR", `📩 ${lead.nome}: "${incoming.text.slice(0, 70).replace(/\s+/g, " ")}"`);
   const claudeMessages = history.map((m) => ({
     role: m.role === "assistant" ? "assistant" : "user",
     content: m.content,
@@ -101,18 +113,20 @@ async function handleIncoming(incoming) {
     const end = rawReply.lastIndexOf("}");
     parsed = JSON.parse(rawReply.slice(start, end + 1));
   } catch {
-    parsed = { acao: "responder", resposta: rawReply.trim(), resumo_handoff: "" };
+    parsed = { acao: "responder", interesse: false, motivo_interesse: "", resposta: rawReply.trim(), resumo_handoff: "" };
   }
 
   if (parsed.resposta) {
     await sendWhatsAppText(incoming.phone, parsed.resposta);
     appendConversation(incoming.phone, "assistant", parsed.resposta);
+    logActivity("SDR", `🤖 Respondeu ${lead.nome}: "${parsed.resposta.slice(0, 70).replace(/\s+/g, " ")}"`);
   }
 
   if (parsed.acao === "handoff") {
     db.leads[key].state = "proposto";
     db.leads[key].handoff = true;
     saveStatus(db);
+    logActivity("SDR", `🔥 HANDOFF (Ok!) — ${lead.nome} (${incoming.phone})`);
 
     const waLink = `https://wa.me/${incoming.phone}`;
     const alerta =
@@ -129,6 +143,21 @@ async function handleIncoming(incoming) {
     saveStatus(db);
     console.log(`[DESCARTADO] ${lead.nome}.`);
   } else {
+    if (parsed.interesse === true && !db.leads[key].notificadoInteresse) {
+      db.leads[key].notificadoInteresse = true;
+      saveStatus(db);
+      logActivity("SDR", `🔔 Interesse detectado — ${lead.nome} (${incoming.phone})`);
+      const waLink = `https://wa.me/${incoming.phone}`;
+      const alerta =
+        `🔔 LEAD DEMONSTROU INTERESSE — SUA VEZ!\n\n` +
+        `🏢 Empresa: ${lead.nome}\n` +
+        `🏷️ Nicho: ${lead.nicho} (${lead.cidade})\n` +
+        `💬 Cliente disse: "${incoming.text.slice(0, 220)}"\n` +
+        `🧠 Motivo: ${parsed.motivo_interesse || "Demonstrou interesse / pediu detalhes"}\n` +
+        `🤖 IA respondeu: "${(parsed.resposta || "").slice(0, 220)}"\n\n` +
+        `👉 Abrir WhatsApp: ${waLink}`;
+      await notifyTelegram(alerta);
+    }
     console.log(`[RESPONDIDO] ${lead.nome}: ${parsed.resposta}`);
   }
 }
@@ -168,8 +197,12 @@ const server = http.createServer(async (req, res) => {
       res.end("Prévia não encontrada");
       return;
     }
+    const slug = slugify(lead.nome);
+    const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+    const customFile = path.join(rootDir, "agentes", "entrega", "previas", "geradas", slug, "index.html");
+    const html = fs.existsSync(customFile) ? fs.readFileSync(customFile, "utf8") : renderPreviewHtml(lead);
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-    res.end(renderPreviewHtml(lead));
+    res.end(html);
     return;
   }
 
@@ -207,5 +240,6 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`🤖 Webhook do agente ouvindo em http://0.0.0.0:${PORT}/webhook/whatsapp`);
+  startTelegramBot();
 });
 

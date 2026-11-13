@@ -564,7 +564,8 @@ func (s *Server) apiScrape(w http.ResponseWriter, r *http.Request) {
 		req.CNAE = activity.Code
 
 		if strings.TrimSpace(req.Name) == "" && activity.Termo != "" {
-			req.Name = strings.ToUpper(activity.Termo[:1]) + activity.Termo[1:]
+			runes := []rune(activity.Termo)
+			req.Name = strings.ToUpper(string(runes[:1])) + string(runes[1:])
 		}
 	}
 

@@ -5,9 +5,11 @@ import { fileURLToPath } from "node:url";
 import { spawn, execFile } from "node:child_process";
 import { promisify } from "node:util";
 import {
-  loadStatus, saveStatus, normalizePhone, getConversation, DAILY_LOG_PATH,
+  loadStatus, saveStatus, normalizePhone, getConversation, qualificarLead, callClaude, DAILY_LOG_PATH,
+  logActivity, readActivity, getEvolutionState, getAnthropicUsage,
 } from "./lib.mjs";
 import { slugify, detectNiche } from "../entrega/previas/templates.mjs";
+import { auditSite, runLighthouse } from "../prospeccao/site-audit.mjs";
 
 const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -30,6 +32,15 @@ function pushLog(line) {
     workerState.logs.push(`[${stamp}] ${l}`);
     if (workerState.logs.length > 200) workerState.logs.shift();
   }
+  logActivity("CRM", line);
+}
+
+let evoCache = { state: "unknown", at: 0 };
+async function getCachedEvoState() {
+  if (Date.now() - evoCache.at > 15000) {
+    evoCache = { state: await getEvolutionState(), at: Date.now() };
+  }
+  return evoCache.state;
 }
 
 function checkAuth(req, res) {
@@ -135,6 +146,9 @@ export async function handleCrmRequest(req, res) {
       const normPhone = normalizePhone(l.telefone);
       const msgs = normPhone ? getConversation(normPhone) : [];
       const slug = `${l.id}-${slugify(l.nome)}`;
+      const igMatch = String(l.instagramUrl || l.site || "").match(/instagram\.com\/([a-zA-Z0-9._]+)/i);
+      const igHandle = l.instagram || (igMatch && !/^(p|reel|reels|stories|explore|accounts|tv)$/i.test(igMatch[1]) ? `@${igMatch[1]}` : "");
+      const igUrl = l.instagramUrl || (igHandle ? `https://www.instagram.com/${igHandle.replace(/^@/, "")}/` : "");
 
       return {
         key,
@@ -144,11 +158,14 @@ export async function handleCrmRequest(req, res) {
         nichoGrupo: detectNiche(nicho),
         cidade: l.cidade,
         telefone: normPhone,
+        instagram: igHandle,
+        instagramUrl: igUrl,
         state: st,
         score: l.score || 0,
         avaliacoes: l.avaliacoes || 0,
         temSite: !!l.temSite,
         site: l.site || "",
+        siteAudit: l.siteAudit || null,
         emitido: l.emitido || "",
         handoff: !!l.handoff,
         msgCount: msgs.length,
@@ -161,18 +178,31 @@ export async function handleCrmRequest(req, res) {
       const ta = a.lastMsgAt ? Date.parse(a.lastMsgAt) : 0;
       const tb = b.lastMsgAt ? Date.parse(b.lastMsgAt) : 0;
       if (tb !== ta) return tb - ta;
+      if ((b.id || 0) !== (a.id || 0)) return (b.id || 0) - (a.id || 0);
       return (b.score || 0) - (a.score || 0);
     });
+
+    const persistentLogs = readActivity(80);
+    const mergedLogs = persistentLogs.length ? persistentLogs : workerState.logs;
+    const auditedCount = rawLeads.filter(([, l]) => !!l.siteAudit).length;
+    const evoState = await getCachedEvoState();
 
     sendJson(res, 200, {
       counts,
       daily: getDailyStats(),
       byNiche: Object.values(byNiche).sort((a, b) => b.total - a.total),
+      agents: {
+        evolution: evoState,
+        webhook: "online",
+        workerRunning: workerState.running,
+        auditedCount,
+        anthropic: getAnthropicUsage(),
+      },
       worker: {
         running: workerState.running,
         startedAt: workerState.startedAt,
         lastExitCode: workerState.lastExitCode,
-        logs: workerState.logs,
+        logs: mergedLogs,
       },
       leads,
     });
@@ -214,12 +244,14 @@ export async function handleCrmRequest(req, res) {
     const args = [resolve(__dirname, "worker-disparo.mjs")];
     if (body.forceHorario !== false) args.push("--force-horario");
     if (body.dryRun) args.push("--dry-run");
+    const keys = Array.isArray(body.keys) ? body.keys.filter(Boolean) : [];
+    if (keys.length) args.push(`--keys=${keys.join(",")}`);
 
     workerState.logs = [];
     workerState.running = true;
     workerState.startedAt = new Date().toISOString();
     workerState.lastExitCode = null;
-    pushLog(`▶ Iniciando disparo (${body.dryRun ? "SIMULAÇÃO" : "REAL"})...`);
+    pushLog(`▶ Iniciando disparo (${body.dryRun ? "SIMULAÇÃO" : "REAL"}${keys.length ? ` · ${keys.length} selecionado(s)` : ""})...`);
 
     const child = spawn(process.execPath, args, { cwd: __dirname, env: process.env });
     workerState.proc = child;
@@ -252,20 +284,145 @@ export async function handleCrmRequest(req, res) {
       const body = await readJsonBody(req);
       const limit = Math.min(100, Math.max(5, Number(body.limit) || 25));
       mkdirSync(WEBDATA_DIR, { recursive: true });
+      let targetCsv = null;
       if (body.csvContent && body.filename) {
         const safeName = String(body.filename).replace(/[^a-zA-Z0-9._-]/g, "_");
         const dest = resolve(WEBDATA_DIR, safeName.endsWith(".csv") ? safeName : `${safeName}.csv`);
         writeFileSync(dest, body.csvContent, "utf8");
+        targetCsv = dest;
         pushLog(`📥 CSV salvo em webdata/${safeName}`);
       }
       const leadsOut = resolve(PROSPECCAO_DIR, "leads.json");
-      const conv = await execFileAsync(process.execPath, [resolve(PROSPECCAO_DIR, "converter-leads.mjs"), "-o", leadsOut], { cwd: PROSPECCAO_DIR });
+      const convArgs = [resolve(PROSPECCAO_DIR, "converter-leads.mjs")];
+      if (targetCsv) convArgs.push(targetCsv);
+      convArgs.push("-o", leadsOut);
+      const conv = await execFileAsync(process.execPath, convArgs, { cwd: PROSPECCAO_DIR });
       pushLog(conv.stdout);
-      const fila = await execFileAsync(process.execPath, [resolve(PROSPECCAO_DIR, "gerar-fila.mjs"), leadsOut, "--limit", String(limit), "--canal", "whatsapp"], { cwd: PROSPECCAO_DIR });
+      const fila = await execFileAsync(process.execPath, [resolve(PROSPECCAO_DIR, "gerar-fila.mjs"), leadsOut, "--limit", String(limit), "--canal", "whatsapp", "--relaxed"], { cwd: PROSPECCAO_DIR });
       pushLog(fila.stdout);
       sendJson(res, 200, { ok: true, output: `${conv.stdout}\n${fila.stdout}` });
     } catch (e) {
       pushLog(`❌ Erro ao importar CSV: ${e.message}`);
+      sendJson(res, 500, { error: e.message });
+    }
+    return true;
+  }
+
+  if (req.method === "POST" && path === "/api/crm/audit") {
+    try {
+      const body = await readJsonBody(req);
+      const db = loadStatus();
+      const applyAudit = async (k, lead) => {
+        const resAudit = await auditSite(lead.site, lead.nome);
+        lead.siteAudit = resAudit;
+        if (!lead.instagram && resAudit.instagram) {
+          lead.instagram = resAudit.instagram;
+          lead.instagramUrl = resAudit.instagramUrl;
+        }
+        return resAudit;
+      };
+      if (body.key) {
+        const lead = db.leads?.[body.key];
+        if (!lead) { sendJson(res, 404, { error: "Lead não encontrado" }); return true; }
+        if (!lead.site) { sendJson(res, 400, { error: "Lead não possui site cadastrado" }); return true; }
+        const audit = await applyAudit(body.key, lead);
+        saveStatus(db);
+        pushLog(`[Audit] ${lead.nome}: ${audit.score}/100 (Seg ${audit.securityScore} · Qual ${audit.qualityScore})`);
+        sendJson(res, 200, { ok: true, audit });
+        return true;
+      }
+      const targets = Object.entries(db.leads || {})
+        .filter(([, l]) => l.temSite && l.site && !/instagram\.com|facebook\.com/i.test(l.site) && !l.siteAudit)
+        .slice(0, 15);
+      for (let i = 0; i < targets.length; i += 5) {
+        await Promise.all(targets.slice(i, i + 5).map(([k, l]) => applyAudit(k, l)));
+      }
+      saveStatus(db);
+      pushLog(`[Audit] ${targets.length} sites auditados em lote.`);
+      sendJson(res, 200, { ok: true, auditedCount: targets.length });
+    } catch (e) {
+      sendJson(res, 500, { error: e.message });
+    }
+    return true;
+  }
+
+  if (req.method === "POST" && path === "/api/crm/lighthouse") {
+    try {
+      const body = await readJsonBody(req);
+      const db = loadStatus();
+      const lead = db.leads?.[body.key];
+      if (!lead) { sendJson(res, 404, { error: "Lead não encontrado" }); return true; }
+      if (!lead.site) { sendJson(res, 400, { error: "Lead não possui site cadastrado" }); return true; }
+      const lighthouse = await runLighthouse(lead.site, lead.nome);
+      lead.lighthouse = lighthouse;
+      saveStatus(db);
+      pushLog(`[Lighthouse] ${lead.nome}: Perf ${lighthouse.perf ?? "-"} · SEO ${lighthouse.seo ?? "-"}`);
+      sendJson(res, 200, { ok: true, lighthouse });
+    } catch (e) {
+      sendJson(res, 500, { error: e.message });
+    }
+    return true;
+  }
+
+  if (req.method === "POST" && path === "/api/crm/proposta") {
+    try {
+      const body = await readJsonBody(req);
+      const db = loadStatus();
+      let targetKey = body.key && db.leads[body.key] ? body.key : null;
+      if (!targetKey && body.phone) {
+        const want = normalizePhone(body.phone);
+        targetKey = Object.keys(db.leads).find((k) => normalizePhone(db.leads[k]?.telefone || "") === want) || null;
+      }
+      if (!targetKey) {
+        sendJson(res, 404, { error: "Lead não encontrado" });
+        return true;
+      }
+
+      const lead = db.leads[targetKey];
+      const qual = qualificarLead(lead);
+      const conv = getConversation(lead.telefone || "");
+      const historico = conv.slice(-6).map((m) => `${m.role === "assistant" ? "SDR" : "Lead"}: ${m.content}`).join("\n");
+
+      const system =
+        "Você é o Closer Sênior da WiNS Hub Comercial. Gere uma proposta comercial enxuta e persuasiva em português (pronta para copiar e enviar no WhatsApp ou apresentar em call de 10 min).\n" +
+        "Estrutura obrigatória:\n" +
+        "1) Diagnóstico rápido (usando os dados reais do lead)\n" +
+        "2) Pacote recomendado (Site Profissional / Google & Meta Ads / Vídeos Curtos com IA / Central de WhatsApp Multi-Atendente + Agendamento / Máquina de Prospecção + CRM Autônomo com IA para B2B) com entregáveis claros\n" +
+        "3) Estimativa realista de retorno (custo por lead e meta de agendamentos pro nicho)\n" +
+        "4) Ancoragem de investimento (Setup + Mensalidade ou pacote de entrada)\n" +
+        "5) 3 respostas curtas para quebrar objeções comuns (\"tá caro\", \"vou pensar\", \"já tenho quem faça\").";
+
+      const userPrompt =
+        `Dados do Lead:\n${qual.fatos.join("\n")}\nSinal comercial: ${qual.sinal}\nOferta principal: ${qual.oferta}\n` +
+        (historico ? `\nÚltimas mensagens da conversa:\n${historico}` : "");
+
+      let texto = "";
+      try {
+        texto = await callClaude({
+          system,
+          messages: [{ role: "user", content: userPrompt }],
+          maxTokens: 900,
+        });
+      } catch {
+        texto =
+          `*Proposta Comercial — ${lead.nome}*\n\n` +
+          `*1. Diagnóstico:* ${qual.sinal}\n` +
+          `*2. Pacote Recomendado (${qual.oferta}):*\n` +
+          `- Estrutura digital focada em conversão no WhatsApp\n` +
+          `- Campanhas locais no Google/Meta Ads segmentadas para ${lead.cidade || "sua região"}\n` +
+          `- Vídeos curtos com IA para anúncios e redes sociais\n\n` +
+          `*3. Ancoragem:* Setup inicial + gestão mensal com acompanhamento semanal de leads.\n` +
+          `*4. Próximo passo:* Call rápida de 10 minutos para ajustar metas e publicar.`;
+      }
+
+      db.leads[targetKey].proposta = {
+        oferta: qual.oferta,
+        texto,
+        geradaEm: new Date().toISOString(),
+      };
+      saveStatus(db);
+      sendJson(res, 200, { ok: true, oferta: qual.oferta, proposta: texto });
+    } catch (e) {
       sendJson(res, 500, { error: e.message });
     }
     return true;

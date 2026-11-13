@@ -10,11 +10,16 @@ agentes/sdr-whatsapp/disparos-hoje.json
 agentes/prospeccao/status.json
 agentes/prospeccao/leads.json
 agentes/prospeccao/fila.md
+agentes/prospeccao/anthropic-usage.json
+agentes/prospeccao/monitor-state.json
 agentes/entrega/previas/geradas/
 comercial/meus-dados.json
 *.exe
 *.db
 *.log
+.env
+.env.*
+!.env.example
 deploy/caddy.env
 examples/examples-api/map-outputs
 examples/examples-api/**/__pycache__/

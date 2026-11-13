@@ -121,6 +121,13 @@ const has = (name) => args.includes("--" + name);
 const LIMIT = parseInt(opt("limit") || "20", 10);
 const CANAL = (opt("canal") || "whatsapp").toLowerCase();
 const DEMO = opt("demo");
+const RELAXED = has("relaxed");
+
+const isCelular = (tel) => {
+  let d = String(tel || "").replace(/\D/g, "");
+  if (d.startsWith("55") && d.length >= 12) d = d.slice(2);
+  return /^\d{2}9\d{8}$/.test(d);
+};
 
 const slugify = (s) =>
   (s || "").normalize("NFD").replace(/\p{M}/gu, "").toLowerCase()
@@ -299,6 +306,14 @@ const cidadeDe = (lead) => {
   return (parts[parts.length - 2] || parts[0] || "sua região").trim();
 };
 
+function extractInstagram(raw = "") {
+  const m = String(raw || "").match(/instagram\.com\/([a-zA-Z0-9._]+)/i);
+  if (!m) return null;
+  const handle = m[1].replace(/\/$/, "");
+  if (!handle || /^(p|reel|reels|stories|explore|accounts|tv)$/i.test(handle)) return null;
+  return { handle: `@${handle}`, url: `https://www.instagram.com/${handle}/` };
+}
+
 function queixa(lead) {
   if (!lead.web_site) return "só senti falta de um site — o perfil do Maps é bom, mas quem busca fora dele não encontra";
   if ((lead.review_rating || 0) >= 4.7 && (lead.review_count || 0) >= 20)
@@ -326,9 +341,13 @@ const normalizar = (e) => {
     telefone: (e.phone || "").replace(/[^\d+]/g, ""),
     site: e.web_site || e.website || "",
     emails: emailsDe(e),
+    cnpj: String(e.cnpj || "").replace(/\D/g, ""),
   };
   l.temSite = l.site.length > 0;
+  l.instagram = extractInstagram(l.site);
+  l.temInsta = !!l.instagram;
   l.temTel = l.telefone.replace(/\D/g, "").length >= 10;
+  l.isCelular = isCelular(l.telefone);
   l.temEmail = l.emails.length > 0;
   l.queixa = queixa(e);
   return l;
@@ -341,8 +360,10 @@ const pontosDo = (l) => {
   let s = 0, breakdown = [];
   const add = (p, why) => { s += p; if (p !== 0) breakdown.push(`${p > 0 ? "+" : ""}${p} ${why}`); };
   if (!l.temSite) add(3, "sem site (maior chance de fechar)");
-  if (l.temTel) add(2, "tem telefone");
+  if (l.isCelular) add(2, "celular válido (WhatsApp provável)");
+  else if (l.temTel) add(1, "tem telefone fixo");
   if (l.temEmail) add(1, "tem e-mail");
+  if (l.temInsta) add(1, `Instagram ${l.instagram.handle}`);
   if (l.nota >= 4.5 && l.avaliacoes >= 15) add(2, "estabelecido (nota + avaliações)");
   if (l.avaliacoes >= 50) add(1, "movimento forte");
   if (NICHOS_QUE_COMPRAM.some((n) => l.cats.includes(n))) add(2, "nicho que costuma comprar");
@@ -431,6 +452,47 @@ function enriquecerViaScrapling(site) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 7b. VALIDAÇÃO FISCAL (BrasilAPI — ATIVA, não-MEI, >= 3 anos)
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function consultarCnpjBrasilApi(cnpj) {
+  const clean = String(cnpj || "").replace(/\D/g, "");
+  if (clean.length !== 14) return null;
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 5000);
+  try {
+    const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${clean}`, {
+      signal: ctrl.signal,
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; WinsHub/1.0)", Accept: "application/json" },
+    });
+    clearTimeout(t);
+    if (!res.ok) return null;
+    const d = await res.json();
+    const ativa = String(d.descricao_situacao_cadastral || "").toUpperCase() === "ATIVA";
+    const mei = d.opcao_pelo_mei === true;
+    let anos = null;
+    if (d.data_inicio_atividade) {
+      const inicio = new Date(d.data_inicio_atividade);
+      if (!Number.isNaN(inicio.getTime())) {
+        anos = Math.floor((Date.now() - inicio.getTime()) / (365.25 * 86400000));
+      }
+    }
+    return {
+      cnpj: clean,
+      razao: d.razao_social || "",
+      ativa,
+      mei,
+      anos,
+      porte: d.porte || "",
+      aprovado: ativa && !mei && (anos === null || anos >= 3),
+    };
+  } catch {
+    clearTimeout(t);
+    return null;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 8. SELECIONAR A FILA
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -439,11 +501,26 @@ const podeContatar =
   : CANAL === "instagram" ? () => true
   : (l) => l.temTel;
 
+const passaIcpEstrito = (l) => {
+  if (RELAXED) return true;
+  if (l.nota < 4.0) return false;
+  if (l.avaliacoes < 15) return false;
+  if (CANAL === "whatsapp" && !l.isCelular) return false;
+  return true;
+};
+
 const seguinteId = 1 + Math.max(0, ...Object.values(db.leads).map((e) => e.id || 0));
 
-const candidatos = leads
+const elegiveis = leads
   .filter(podeContatar)
-  .filter((l) => !db.leads[l.key])
+  .filter((l) => !db.leads[l.key]);
+
+const filtradosIcp = elegiveis.filter(passaIcpEstrito);
+if (!RELAXED && elegiveis.length > 0 && filtradosIcp.length === 0) {
+  console.log("⚠️  Nenhum lead passou no filtro ICP estrito (nota >= 4.0, >= 15 avaliações, celular). Use --relaxed para liberar todos.");
+}
+
+const candidatos = filtradosIcp
   .map((l) => { const p = pontosDo(l); return { ...l, score: p.score, breakdown: p.breakdown }; })
   .sort((a, b) => b.score - a.score)
   .slice(0, LIMIT);
@@ -463,10 +540,25 @@ const followUps = Object.values(db.leads).filter(
 // ─────────────────────────────────────────────────────────────────────────────
 
 const { ap } = aprender();
-for (const l of candidatos) l.en = await enriquecer(l);
+const candidatosFinais = [];
+for (const l of candidatos) {
+  if (l.cnpj) {
+    l.fiscal = await consultarCnpjBrasilApi(l.cnpj);
+    if (!RELAXED && l.fiscal && !l.fiscal.aprovado) {
+      console.log(`⏭️  ${l.nome} descartado no filtro fiscal (CNPJ ${l.fiscal.cnpj}: ativa=${l.fiscal.ativa}, mei=${l.fiscal.mei}, anos=${l.fiscal.anos})`);
+      continue;
+    }
+    if (l.fiscal?.aprovado) {
+      l.score += 2;
+      l.breakdown.push("+2 CNPJ ativo não-MEI >= 3 anos");
+    }
+  }
+  l.en = await enriquecer(l);
+  candidatosFinais.push(l);
+}
 
 const hoje = new Date().toLocaleDateString("pt-BR");
-let md = `# Fila de prospecção — ${hoje}\n\nCanal: **${CANAL}** · ${candidatos.length} leads (limite ${LIMIT})\n\n`;
+let md = `# Fila de prospecção — ${hoje}\n\nCanal: **${CANAL}** · ${candidatosFinais.length} leads (limite ${LIMIT})\n\n`;
 md += `> 🧠 **Aprendizado do sistema**\n- ` + resumoAprendizado(ap).replace(/\n/g, "\n- ") + "\n\n";
 md += `> ⚠️ Taxiamento: máximo **20 msgs/dia** por canal; personalize com o\n> detalhe real de cada lead (🔎 abaixo); follow-up máx. 2.\n\n`;
 
@@ -478,12 +570,14 @@ if (followUps.length) {
 }
 
 let i = 0;
-for (const l of candidatos) {
+for (const l of candidatosFinais) {
   i++;
   const id = seguinteId + i - 1;
   const variante = i % 2 === 1 ? "A" : "B";
   const msg = MENSAGENS[CANAL][variante](l, l.en);
-  const alvo = CANAL === "email" ? l.emails[0] : CANAL === "instagram" ? "_buscar @ do negócio_" : l.telefone;
+  const alvo = CANAL === "email" ? l.emails[0]
+    : CANAL === "instagram" ? (l.instagram ? `${l.instagram.handle} (${l.instagram.url})` : "_buscar @ do negócio_")
+    : l.telefone;
   const demoUrl = DEMO ? `${DEMO.replace(/\/+$/, "")}/${slugify(l.nome)}` : "";
 
   md += `\n---\n## ${i}. ${l.nome} · score ${l.score} ${l.temSite ? "🟡" : "🔴"}\n\n`;
@@ -499,13 +593,14 @@ for (const l of candidatos) {
   db.leads[l.key] = {
     id, nome: l.nome, nicho: l.nicho, cidade: l.cidade,
     telefone: l.telefone, email: CANAL === "email" ? l.emails[0] : "",
+    instagram: l.instagram?.handle || "", instagramUrl: l.instagram?.url || "",
     site: l.site, temSite: l.temSite,
     score: l.score, canal: CANAL, state: "na_fila", emitido: hoje,
     variante, msg, demo_url: demoUrl,
   };
 }
 
-if (candidatos.length === 0)
+if (candidatosFinais.length === 0)
   md += `\n*Sem leads novos. Rode o scraper de novo ou apague \`status.json\` p/ recomeçar.*\n`;
 
 writeFileSync(FILA_PATH, md, "utf8");

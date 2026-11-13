@@ -23,7 +23,10 @@
         counts: {},         // jobId -> nº de empresas
         selected: null,     // job selecionado
         places: [],
+        selectedKeys: {},
         filter: 'all',
+        sortKey: null,
+        sortDir: 'asc',
         view: 'map'
     };
 
@@ -51,11 +54,11 @@
         if (circle) map.removeLayer(circle);
         circle = L.circle([lat, lon], {
             radius: km * 1000,
-            color: '#0a0a0a',
+            color: '#f3f4f6',
             weight: 2,
             dashArray: '6 6',
-            fillColor: '#0a0a0a',
-            fillOpacity: 0.06
+            fillColor: '#f3f4f6',
+            fillOpacity: 0.08
         }).addTo(map);
         if (fit) {
             map.flyToBounds(circle.getBounds(), {
@@ -147,7 +150,7 @@
     function updateRange() {
         var el = $('radius');
         var pct = (el.value - el.min) / (el.max - el.min) * 100;
-        el.style.background = 'linear-gradient(to right, #0a0a0a ' + pct + '%, #ebebeb ' + pct + '%)';
+        el.style.background = 'linear-gradient(to right, #f3f4f6 ' + pct + '%, #23293a ' + pct + '%)';
         $('radiusVal').textContent = el.value + ' km';
     }
 
@@ -506,9 +509,22 @@
 
     // ---------- Painel ----------
 
+    function sortVal(p, key) {
+        if (key === 'title') return (p.title || '').toLowerCase();
+        if (key === 'borough') return (p.borough || '').toLowerCase();
+        if (key === 'rating') return (Number(p.review_rating || 0) * 100000) + Number(p.review_count || 0);
+        if (key === 'phone') return (whatsapp(p.phone) ? '2_' : (p.phone ? '1_' : '0_')) + (p.phone || '');
+        if (key === 'site') {
+            var k = siteKind(p.website);
+            var rank = k === 'none' ? '0_' : (k === 'social' ? '1_' : '2_');
+            return rank + domain(p.website || '').toLowerCase();
+        }
+        return '';
+    }
+
     function filtered() {
         var txt = $('filterText').value.trim().toLowerCase();
-        return state.places.filter(function (p) {
+        var list = state.places.filter(function (p) {
             var k = siteKind(p.website);
             if (state.filter === 'nosite' && k !== 'none') return false;
             if (state.filter === 'social' && k !== 'social') return false;
@@ -517,6 +533,17 @@
             if (txt && (p.title + ' ' + p.borough + ' ' + p.category).toLowerCase().indexOf(txt) < 0) return false;
             return true;
         });
+        if (state.sortKey) {
+            var key = state.sortKey;
+            var dir = state.sortDir === 'desc' ? -1 : 1;
+            list = list.slice().sort(function (a, b) {
+                var va = sortVal(a, key);
+                var vb = sortVal(b, key);
+                if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * dir;
+                return String(va).localeCompare(String(vb), 'pt-BR') * dir;
+            });
+        }
+        return list;
     }
 
     function renderBoard() {
@@ -547,17 +574,40 @@
             b.classList.toggle('on', b.getAttribute('data-f') === state.filter);
         });
 
+        if ($('boardHead')) {
+            Array.prototype.forEach.call($('boardHead').querySelectorAll('th[data-sort]'), function (th) {
+                var k = th.getAttribute('data-sort');
+                var active = state.sortKey === k;
+                th.classList.toggle('active', active);
+                var ind = th.querySelector('.sort-ind');
+                if (ind) ind.textContent = active ? (state.sortDir === 'asc' ? '▲' : '▼') : '⇅';
+            });
+        }
+
         var rows = filtered();
-        $('download').textContent = 'Baixar planilha (' + rows.length + ')';
+        var picked = selectedRows(rows);
+        var activeRows = picked.length ? picked : rows;
+        $('download').textContent = 'Baixar planilha (' + activeRows.length + ')';
+        if ($('sendToCrm')) {
+            $('sendToCrm').textContent = picked.length ? 'Enviar para Agentes (' + picked.length + ')' : 'Enviar para Agentes';
+        }
+        if ($('selectAllRows')) {
+            $('selectAllRows').checked = rows.length > 0 && picked.length === rows.length;
+            $('selectAllRows').indeterminate = picked.length > 0 && picked.length < rows.length;
+        }
         if (!rows.length) {
-            $('rows').innerHTML = '<tr><td colspan="6" class="t-empty">' +
+            $('rows').innerHTML = '<tr><td colspan="7" class="t-empty">' +
                 (all.length ? 'Nenhuma empresa nesse filtro.' : (running ? 'As empresas aparecem aqui conforme a busca anda.' : 'Essa busca não trouxe empresas.')) +
                 '</td></tr>';
             return;
         }
         $('rows').innerHTML = rows.map(function (p, i) {
+            var pk = placeKey(p);
+            var checked = state.selectedKeys[pk] ? ' checked' : '';
             var k = siteKind(p.website);
+            var ig = instagramHandle(p.website);
             var site = k === 'none' ? '<span class="tag dark">Sem site</span>'
+                : ig ? '<a class="t-site" href="' + esc(p.website) + '" target="_blank" rel="noopener">' + esc(ig) + '</a><span class="tag">Instagram</span>'
                 : '<a class="t-site" href="' + esc(p.website) + '" target="_blank" rel="noopener">' + esc(domain(p.website)) + '</a>' +
                   (k === 'social' ? '<span class="tag">Rede social</span>' : '');
             var wa = whatsapp(p.phone);
@@ -565,6 +615,7 @@
                 : wa ? '<a class="mono" href="https://wa.me/' + wa + '" target="_blank" rel="noopener">' + esc(p.phone) + '</a><span class="wa">WHATS</span>'
                 : '<span class="mono">' + esc(p.phone) + '</span>';
             return '<tr data-i="' + i + '">' +
+                '<td class="chk-col"><input type="checkbox" class="row-chk" data-pk="' + esc(pk) + '"' + checked + '></td>' +
                 '<td><div class="t-name">' + esc(p.title) + '</div><div class="t-cat">' + esc(p.category) + '</div></td>' +
                 '<td>' + esc(p.borough) + '</td>' +
                 '<td class="num">' + (p.review_rating ? '★ ' + rating(p.review_rating) + ' <span class="t-cat">(' + int(p.review_count) + ')</span>' : '') + '</td>' +
@@ -586,10 +637,56 @@
 
     segmented('filters', 'data-f', function (v) { state.filter = v; renderBoard(); });
     $('filterText').addEventListener('input', renderBoard);
+    if ($('boardHead')) {
+        $('boardHead').addEventListener('click', function (e) {
+            var th = e.target.closest('th[data-sort]');
+            if (!th) return;
+            var key = th.getAttribute('data-sort');
+            if (state.sortKey === key) {
+                state.sortDir = state.sortDir === 'asc' ? 'desc' : 'asc';
+            } else {
+                state.sortKey = key;
+                state.sortDir = (key === 'rating' || key === 'phone') ? 'desc' : 'asc';
+            }
+            renderBoard();
+        });
+    }
+
+    function selectedRows(rows) {
+        return (rows || []).filter(function (p) { return !!state.selectedKeys[placeKey(p)]; });
+    }
+
+    function targetRows() {
+        var rows = filtered();
+        var picked = selectedRows(rows);
+        return picked.length ? picked : rows;
+    }
 
     // Clicar numa linha leva pro pin no mapa.
+    $('rows').addEventListener('change', function (e) {
+        var chk = e.target.closest('input.row-chk[data-pk]');
+        if (!chk) return;
+        var pk = chk.getAttribute('data-pk');
+        if (chk.checked) state.selectedKeys[pk] = true;
+        else delete state.selectedKeys[pk];
+        renderBoard();
+    });
+
+    if ($('selectAllRows')) {
+        $('selectAllRows').addEventListener('change', function () {
+            var rows = filtered();
+            var on = this.checked;
+            rows.forEach(function (p) {
+                var pk = placeKey(p);
+                if (on) state.selectedKeys[pk] = true;
+                else delete state.selectedKeys[pk];
+            });
+            renderBoard();
+        });
+    }
+
     $('rows').addEventListener('click', function (e) {
-        if (e.target.closest('a')) return;
+        if (e.target.closest('a, input, label')) return;
         var tr = e.target.closest('tr[data-i]');
         if (!tr) return;
         var p = renderBoard.rows[Number(tr.getAttribute('data-i'))];
@@ -601,20 +698,35 @@
         }
     });
 
+    function setDrawer(open) {
+        document.body.classList.toggle('drawer-open', !!open);
+        if ($('drawerBackdrop')) $('drawerBackdrop').hidden = !open;
+    }
+    if ($('mobileMenuBtn')) $('mobileMenuBtn').addEventListener('click', function () { setDrawer(true); });
+    if ($('drawerClose')) $('drawerClose').addEventListener('click', function () { setDrawer(false); });
+    if ($('drawerBackdrop')) $('drawerBackdrop').addEventListener('click', function () { setDrawer(false); });
+    if ($('jobs')) $('jobs').addEventListener('click', function () { setDrawer(false); });
+
     function setView(v) {
         state.view = v;
+        setDrawer(false);
+        document.body.classList.toggle('view-wide', v !== 'map');
         Array.prototype.forEach.call($('viewSeg').children, function (b) {
             b.classList.toggle('on', b.getAttribute('data-view') === v);
         });
+        if ($('mobileNav')) {
+            Array.prototype.forEach.call($('mobileNav').children, function (b) {
+                b.classList.toggle('on', b.getAttribute('data-view') === v);
+            });
+        }
         $('board').hidden = v !== 'board';
         if ($('crmView')) $('crmView').hidden = v !== 'crm';
-        if (v === 'crm' && $('crmFrame') && !$('crmFrame').getAttribute('src')) {
-            $('crmFrame').setAttribute('src', '/crm');
-        }
         renderLive();
         if (v === 'board') renderBoard();
+        if (v === 'crm') loadCrm();
     }
     segmented('viewSeg', 'data-view', setView);
+    if ($('mobileNav')) segmented('mobileNav', 'data-view', setView);
 
     // ---------- Exportação ----------
 
@@ -627,12 +739,20 @@
         return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
     }
 
+    function instagramHandle(url) {
+        var m = String(url || '').match(/instagram\.com\/([a-zA-Z0-9._]+)/i);
+        if (!m) return '';
+        var h = m[1].replace(/\/$/, '');
+        if (!h || /^(p|reel|reels|stories|explore|accounts|tv)$/i.test(h)) return '';
+        return '@' + h;
+    }
+
     function buildCsvContent(rows) {
         var cnae = (state.selected && state.selected.Data && state.selected.Data.cnae) || '';
-        var head = ['Empresa', 'Categoria', 'Telefone', 'WhatsApp', 'Site', 'E-mail', 'Nota', 'Avaliações', 'Bairro', 'Cidade', 'Endereço', 'Google Maps', 'CNAE'];
+        var head = ['Empresa', 'Categoria', 'Telefone', 'WhatsApp', 'Instagram', 'Site', 'E-mail', 'Nota', 'Avaliações', 'Bairro', 'Cidade', 'Endereço', 'Google Maps', 'CNAE'];
         var lines = [head.join(';')].concat(rows.map(function (p) {
             var wa = whatsapp(p.phone);
-            return [p.title, p.category, p.phone, wa ? 'https://wa.me/' + wa : '', p.website, p.emails,
+            return [p.title, p.category, p.phone, wa ? 'https://wa.me/' + wa : '', instagramHandle(p.website), p.website, p.emails,
                 p.review_rating ? rating(p.review_rating) : '', p.review_count || '', p.borough, p.city, p.address, p.link, p.cnae || cnae]
                 .map(csvCell).join(';');
         }));
@@ -651,12 +771,12 @@
         toast(rows.length + ' empresas exportadas');
     }
 
-    $('download').addEventListener('click', function () { download(filtered()); });
+    $('download').addEventListener('click', function () { download(targetRows()); });
     $('liveDownload').addEventListener('click', function () { download(state.places); });
 
     if ($('sendToCrm')) {
         $('sendToCrm').addEventListener('click', function () {
-            var rows = filtered();
+            var rows = targetRows();
             if (!state.selected || !rows.length) return;
             var btn = this;
             btn.disabled = true;
@@ -667,29 +787,371 @@
                 body: JSON.stringify({
                     filename: 'wins-hub-' + slug(state.selected.Name) + '.csv',
                     csvContent: buildCsvContent(rows),
-                    limit: 30
+                    limit: Math.max(25, rows.length)
                 })
             })
                 .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || 'Erro'); return j; }); })
                 .then(function () {
                     toast(rows.length + ' leads enviados para a fila dos agentes');
-                    if ($('crmFrame') && $('crmFrame').getAttribute('src')) $('crmFrame').src = '/crm';
+                    setView('crm');
                 })
                 .catch(function (e) { toast('Falha ao enviar para o CRM: ' + e.message); })
                 .then(function () {
                     btn.disabled = false;
-                    btn.textContent = 'Enviar para Agentes';
+                    renderBoard();
                 });
         });
     }
 
     $('copyPhones').addEventListener('click', function () {
-        var phones = filtered().map(function (p) { return p.phone; }).filter(Boolean);
+        var phones = targetRows().map(function (p) { return p.phone; }).filter(Boolean);
         if (!phones.length) return;
         navigator.clipboard.writeText(phones.join('\n')).then(function () {
             toast(phones.length + ' telefones copiados');
         });
     });
+
+    // ---------- CRM Nativo ----------
+
+    var crmState = { data: null, filter: 'all', selectedKeys: {} };
+
+    function selectedCrmKeys() {
+        return Object.keys(crmState.selectedKeys).filter(function (k) { return !!crmState.selectedKeys[k]; });
+    }
+
+    function loadCrm() {
+        if (!$('crmView')) return Promise.resolve();
+        return fetch('/api/crm/overview')
+            .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            .then(function (d) { crmState.data = d; renderCrm(); })
+            .catch(function () {
+                if ($('crmMeta')) $('crmMeta').textContent = 'Agente offline ou aguardando conexão.';
+            });
+    }
+
+    function renderCrm() {
+        var d = crmState.data;
+        if (!d) return;
+        var c = d.counts;
+        var enviados = c.enviado + c.visualizado + c.respondeu + c.proposto + c.fechado;
+        var resp = c.respondeu + c.proposto + c.fechado;
+        var taxa = enviados ? Math.round((resp / enviados) * 100) : 0;
+
+        $('crmMeta').textContent = (d.worker.running ? 'Disparando agora · ' : 'Pronto · ') +
+            d.daily.count + '/' + d.daily.max + ' envios hoje · ' + c.total + ' leads na base';
+        $('crmStart').disabled = d.worker.running;
+        $('crmDryRun').disabled = d.worker.running;
+        $('crmStop').hidden = !d.worker.running;
+
+        $('crmStats').innerHTML = [
+            [int(c.na_fila), 'Na fila'],
+            [d.daily.count + ' / ' + d.daily.max, 'Disparos hoje'],
+            [resp + ' (' + taxa + '%)', 'Responderam'],
+            [int(c.proposto), 'Handoffs (Ok!)'],
+            [int(c.fechado), 'Fechados']
+        ].map(function (s) {
+            return '<div class="stat"><div class="stat-n">' + esc(s[0]) + '</div><div class="stat-l">' + esc(s[1]) + '</div></div>';
+        }).join('');
+
+        if ($('crmAgents') && d.agents) {
+            var a = d.agents;
+            var evoOn = a.evolution === 'open';
+            var ant = a.anthropic || {};
+            var antToday = ant.today || {};
+            var antTok = (antToday.inputTokens || 0) + (antToday.outputTokens || 0);
+            var antSub = ant.lastError
+                ? 'Erro API'
+                : (antToday.calls || 0) + ' reqs · ' + int(antTok) + ' tok · US$ ' + Number(antToday.costUsd || 0).toFixed(3);
+            var cards = [
+                { name: 'Evolution WhatsApp', sub: evoOn ? 'Conectado' : String(a.evolution || 'offline'), cls: evoOn ? 'on' : 'warn' },
+                { name: 'SDR Auto-Resposta', sub: a.webhook === 'online' ? 'Ouvindo :3005' : 'Offline', cls: a.webhook === 'online' ? 'on' : '' },
+                { name: 'Anthropic Claude', sub: antSub, cls: ant.lastError ? 'warn' : ((antToday.calls || 0) > 0 ? 'on' : ''), title: 'Total acumulado: ' + ((ant.total && ant.total.calls) || 0) + ' reqs · US$ ' + Number((ant.total && ant.total.costUsd) || 0).toFixed(4) },
+                { name: 'Disparador', sub: a.workerRunning ? 'Disparando agora' : ('Ocioso · ' + d.daily.count + '/' + d.daily.max), cls: a.workerRunning ? 'on' : '' },
+                { name: 'Auditor & Prévias', sub: int(a.auditedCount || 0) + ' sites auditados', cls: (a.auditedCount || 0) > 0 ? 'on' : '' }
+            ];
+            $('crmAgents').innerHTML = cards.map(function (c) {
+                return '<div class="crm-agent-pill" title="' + esc(c.title || '') + '"><span class="crm-agent-left"><i class="crm-dot ' + c.cls + '"></i>' + esc(c.name) + '</span><span class="crm-agent-sub">' + esc(c.sub) + '</span></div>';
+            }).join('');
+        }
+
+        var logs = $('crmLogs');
+        logs.textContent = d.worker.logs.length ? d.worker.logs.join('\n') : 'Nenhuma execução nesta sessão.';
+        logs.scrollTop = logs.scrollHeight;
+
+        $('crmNiches').innerHTML = (d.byNiche || []).map(function (n) {
+            return '<tr><td>' + esc(n.nicho) + '</td><td class="num">' + n.na_fila + '</td><td class="num">' + n.enviados + '</td><td class="num">' + n.respostas + '</td><td class="num">' + n.fechados + '</td></tr>';
+        }).join('');
+
+        var q = ($('crmSearch').value || '').trim().toLowerCase();
+        var list = (d.leads || []).filter(function (l) {
+            if (crmState.filter !== 'all' && l.state !== crmState.filter) return false;
+            if (q && (l.nome + ' ' + l.nicho + ' ' + l.cidade).toLowerCase().indexOf(q) < 0) return false;
+            return true;
+        });
+
+        var pickedCount = selectedCrmKeys().length;
+        $('crmStart').textContent = pickedCount ? 'Start Disparo (' + pickedCount + ')' : 'Start Disparo';
+        $('crmDryRun').textContent = pickedCount ? 'Simular (' + pickedCount + ')' : 'Simular';
+        if ($('crmSelectAll')) {
+            var visChecked = list.filter(function (l) { return !!crmState.selectedKeys[l.key]; }).length;
+            $('crmSelectAll').checked = list.length > 0 && visChecked === list.length;
+            $('crmSelectAll').indeterminate = visChecked > 0 && visChecked < list.length;
+        }
+
+        if (!list.length) {
+            $('crmRows').innerHTML = '<tr><td colspan="7" class="t-empty">Nenhum lead nessa etapa.</td></tr>';
+            return;
+        }
+
+        var ST_LIST = ['na_fila', 'enviado', 'respondeu', 'proposto', 'fechado', 'descartado'];
+        $('crmRows').innerHTML = list.map(function (l) {
+            var checked = crmState.selectedKeys[l.key] ? ' checked' : '';
+            var badgeCls = (l.state === 'fechado' || l.state === 'proposto') ? 'tag dark' : 'tag';
+            var igBadge = l.instagram ? ' · <a href="' + esc(l.instagramUrl) + '" target="_blank" rel="noopener">' + esc(l.instagram) + '</a>' : '';
+            var stackTag = l.siteAudit && l.siteAudit.stack && l.siteAudit.stack.length ? ' · <span class="tag">' + esc(l.siteAudit.stack[0]) + '</span>' : '';
+            var lhTag = l.lighthouse && l.lighthouse.perf != null ? ' · <span class="tag' + (l.lighthouse.perf < 70 ? ' dark' : '') + '">LH ' + l.lighthouse.perf + '/100</span>' : '';
+            var auditBadge = (l.siteAudit ? ' · <span class="tag' + (l.siteAudit.score < 70 ? ' dark' : '') + '">Site ' + l.siteAudit.score + '/100 (Seg ' + l.siteAudit.securityScore + ')</span>' + stackTag : '') + lhTag;
+            return '<tr>' +
+                '<td class="chk-col"><input type="checkbox" class="crm-chk" data-key="' + esc(l.key) + '"' + checked + '></td>' +
+                '<td><div class="t-name">' + esc(l.nome) + '</div><div class="t-cat">Score ' + l.score + ' · ' + int(l.avaliacoes) + ' aval. · ' + (l.temSite ? 'Com site' : 'Sem site') + igBadge + auditBadge + '</div></td>' +
+                '<td><div>' + esc(l.nicho) + '</div><div class="t-cat">' + esc(l.cidade) + '</div></td>' +
+                '<td><span class="' + badgeCls + '">' + esc(l.state) + '</span></td>' +
+                '<td><button type="button" class="ghost" data-chat="' + esc(l.telefone) + '" data-key="' + esc(l.key) + '" data-nome="' + esc(l.nome) + '" data-nicho="' + esc(l.nicho) + '">' + l.msgCount + ' msgs</button></td>' +
+                '<td><a class="t-site" href="' + esc(l.previewUrl) + '" target="_blank" rel="noopener">Abrir prévia</a></td>' +
+                '<td><select class="crm-select" data-key="' + esc(l.key) + '">' +
+                ST_LIST.map(function (s) { return '<option value="' + s + '"' + (l.state === s ? ' selected' : '') + '>' + s + '</option>'; }).join('') +
+                '</select></td>' +
+                '</tr>';
+        }).join('');
+    }
+
+    if ($('crmFilters')) {
+        setInterval(function () {
+            if (state.view === 'crm') loadCrm();
+        }, 5000);
+        segmented('crmFilters', 'data-st', function (v) { crmState.filter = v; renderCrm(); });
+        $('crmSearch').addEventListener('input', renderCrm);
+
+        $('crmRows').addEventListener('click', function (e) {
+            var btn = e.target.closest('[data-chat]');
+            if (!btn) return;
+            var phone = btn.getAttribute('data-chat');
+            crmState.activeKey = btn.getAttribute('data-key');
+            $('crmChatTitle').textContent = btn.getAttribute('data-nome');
+            $('crmChatSub').textContent = btn.getAttribute('data-nicho') + ' · ' + phone;
+            $('crmChatWa').href = 'https://wa.me/' + phone;
+            if ($('crmPropostaBox')) { $('crmPropostaBox').hidden = true; $('crmPropostaBox').textContent = ''; }
+            fetch('/api/crm/conversation?phone=' + encodeURIComponent(phone))
+                .then(function (r) { return r.json(); })
+                .then(function (res) {
+                    $('crmChatBody').innerHTML = (res.messages || []).length
+                        ? res.messages.map(function (m) {
+                            return '<div class="crm-msg ' + (m.role === 'assistant' ? 'assistant' : 'user') + '">' +
+                                esc(m.content) + '<div class="crm-msg-at">' + dateBR(m.at) + '</div></div>';
+                        }).join('')
+                        : '<div class="t-cat">Nenhuma mensagem trocada ainda.</div>';
+                    $('crmDrawer').hidden = false;
+                });
+        });
+
+        $('crmRows').addEventListener('change', function (e) {
+            var chk = e.target.closest('input.crm-chk[data-key]');
+            if (chk) {
+                var k = chk.getAttribute('data-key');
+                if (chk.checked) crmState.selectedKeys[k] = true;
+                else delete crmState.selectedKeys[k];
+                renderCrm();
+                return;
+            }
+            var sel = e.target.closest('select[data-key]');
+            if (!sel) return;
+            fetch('/api/crm/lead/status', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ key: sel.getAttribute('data-key'), state: sel.value })
+            }).then(function () { toast('Status atualizado'); loadCrm(); });
+        });
+
+        if ($('crmSelectAll')) {
+            $('crmSelectAll').addEventListener('change', function () {
+                var on = this.checked;
+                var d = crmState.data;
+                if (!d) return;
+                var q = ($('crmSearch').value || '').trim().toLowerCase();
+                (d.leads || []).filter(function (l) {
+                    if (crmState.filter !== 'all' && l.state !== crmState.filter) return false;
+                    if (q && (l.nome + ' ' + l.nicho + ' ' + l.cidade).toLowerCase().indexOf(q) < 0) return false;
+                    return true;
+                }).forEach(function (l) {
+                    if (on) crmState.selectedKeys[l.key] = true;
+                    else delete crmState.selectedKeys[l.key];
+                });
+                renderCrm();
+            });
+        }
+
+        $('crmChatClose').addEventListener('click', function () { $('crmDrawer').hidden = true; });
+
+        if ($('crmAuditAll')) {
+            $('crmAuditAll').addEventListener('click', function () {
+                var btn = this;
+                btn.disabled = true;
+                btn.textContent = 'Auditando...';
+                fetch('/api/crm/audit', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ all: true })
+                })
+                    .then(function (r) { return r.json(); })
+                    .then(function (res) {
+                        if (!res.ok) { toast('Erro: ' + (res.error || 'falha')); return; }
+                        toast(res.auditedCount + ' sites auditados');
+                        loadCrm();
+                    })
+                    .catch(function () { toast('Erro ao auditar sites'); })
+                    .finally(function () { btn.disabled = false; btn.textContent = 'Auditar Sites'; });
+            });
+        }
+
+        if ($('crmAuditOne')) {
+            $('crmAuditOne').addEventListener('click', function () {
+                if (!crmState.activeKey) return;
+                var btn = this;
+                btn.disabled = true;
+                btn.textContent = 'Auditando...';
+                fetch('/api/crm/audit', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ key: crmState.activeKey })
+                })
+                    .then(function (r) { return r.json(); })
+                    .then(function (res) {
+                        if (!res.ok) { toast('Erro: ' + (res.error || 'falha')); return; }
+                        var a = res.audit;
+                        var txt = 'Site: ' + a.url +
+                            '\nScore Geral: ' + a.score + '/100 (Segurança: ' + a.securityScore + '/100 · Qualidade: ' + a.qualityScore + '/100)' +
+                            (a.stack && a.stack.length ? '\nStack detectada: ' + a.stack.join(', ') : '') +
+                            '\nPixels: ' + (a.pixels && a.pixels.length ? a.pixels.join(', ') : 'Nenhum detectado') +
+                            (a.empresaInfo ? '\nCNPJ: ' + a.empresaInfo.cnpj + (a.empresaInfo.porte ? ' (' + a.empresaInfo.porte + ')' : '') + (a.empresaInfo.socios && a.empresaInfo.socios.length ? ' · Sócios: ' + a.empresaInfo.socios.join(', ') : '') : '') +
+                            (a.instagram ? '\nInstagram encontrado: ' + a.instagram : '') +
+                            (a.problems && a.problems.length ? '\n\nPontos encontrados:\n- ' + a.problems.join('\n- ') : '') +
+                            '\n\nPitch sugerido (copiado):\n' + a.pitch;
+                        var box = $('crmPropostaBox');
+                        box.textContent = txt;
+                        box.hidden = false;
+                        if (navigator.clipboard) navigator.clipboard.writeText(a.pitch || '').catch(function () {});
+                        toast('Site auditado: ' + a.score + '/100');
+                        loadCrm();
+                    })
+                    .catch(function () { toast('Erro ao auditar site'); })
+                    .finally(function () { btn.disabled = false; btn.textContent = 'Auditar Site'; });
+            });
+        }
+
+        if ($('crmLighthouseOne')) {
+            $('crmLighthouseOne').addEventListener('click', function () {
+                if (!crmState.activeKey) return;
+                var btn = this;
+                btn.disabled = true;
+                btn.textContent = 'Rodando Lighthouse (~15s)...';
+                fetch('/api/crm/lighthouse', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ key: crmState.activeKey })
+                })
+                    .then(function (r) { return r.json(); })
+                    .then(function (res) {
+                        if (!res.ok) { toast('Erro: ' + (res.error || 'falha')); return; }
+                        var lh = res.lighthouse;
+                        var txt = 'Google Lighthouse (Oficial): ' + lh.url +
+                            '\nPerformance Mobile: ' + (lh.perf ?? '-') + '/100' +
+                            '\nSEO: ' + (lh.seo ?? '-') + '/100' +
+                            '\nAcessibilidade: ' + (lh.acc ?? '-') + '/100' +
+                            '\nBoas Práticas: ' + (lh.bp ?? '-') + '/100' +
+                            (lh.lcp ? '\nLCP (Carregamento Principal): ' + lh.lcp : '') +
+                            (lh.fcp ? '\nFCP (Primeiro Conteúdo): ' + lh.fcp : '') +
+                            '\n\nPitch sugerido (copiado):\n' + lh.pitch;
+                        var box = $('crmPropostaBox');
+                        box.textContent = txt;
+                        box.hidden = false;
+                        if (navigator.clipboard) navigator.clipboard.writeText(lh.pitch || '').catch(function () {});
+                        toast('Lighthouse: Perf ' + (lh.perf ?? '-') + '/100');
+                        loadCrm();
+                    })
+                    .catch(function () { toast('Erro ao rodar Lighthouse'); })
+                    .finally(function () { btn.disabled = false; btn.textContent = 'Lighthouse (Google)'; });
+            });
+        }
+
+        if ($('crmGenProposta')) {
+            $('crmGenProposta').addEventListener('click', function () {
+                if (!crmState.activeKey) return;
+                var btn = this;
+                btn.disabled = true;
+                btn.textContent = 'Gerando...';
+                fetch('/api/crm/proposta', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ key: crmState.activeKey })
+                })
+                    .then(function (r) { return r.json(); })
+                    .then(function (res) {
+                        if (!res.ok) { toast('Erro: ' + (res.error || 'falha')); return; }
+                        var box = $('crmPropostaBox');
+                        box.textContent = res.proposta || '';
+                        box.hidden = false;
+                        if (navigator.clipboard) navigator.clipboard.writeText(res.proposta || '').catch(function () {});
+                        toast('Proposta gerada e copiada!');
+                    })
+                    .catch(function () { toast('Erro ao gerar proposta'); })
+                    .finally(function () { btn.disabled = false; btn.textContent = 'Gerar Proposta (Closer)'; });
+            });
+        }
+
+        $('crmStart').addEventListener('click', function () {
+            var keys = selectedCrmKeys();
+            var msg = keys.length
+                ? 'Iniciar disparo REAL no WhatsApp para os ' + keys.length + ' lead(s) selecionado(s)?'
+                : 'Nenhum lead marcado — iniciar disparo REAL no WhatsApp para toda a fila (até o limite diário)?';
+            if (!confirm(msg)) return;
+            fetch('/api/crm/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ dryRun: false, forceHorario: true, keys: keys })
+            }).then(function () { toast('Disparo iniciado'); loadCrm(); });
+        });
+
+        $('crmDryRun').addEventListener('click', function () {
+            var keys = selectedCrmKeys();
+            fetch('/api/crm/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ dryRun: true, forceHorario: true, keys: keys })
+            }).then(function () { toast('Simulação iniciada'); loadCrm(); });
+        });
+
+        $('crmStop').addEventListener('click', function () {
+            fetch('/api/crm/stop', { method: 'POST' }).then(function () { toast('Parada solicitada'); loadCrm(); });
+        });
+
+        $('crmCsvInput').addEventListener('change', function () {
+            var file = this.files[0];
+            if (!file) return;
+            var input = this;
+            file.text().then(function (csvContent) {
+                return fetch('/api/crm/import-csv', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ filename: file.name, csvContent: csvContent, limit: 25 })
+                });
+            }).then(function (r) { return r.json(); })
+                .then(function (res) {
+                    toast(res.ok ? 'CSV importado para a fila!' : ('Erro: ' + res.error));
+                    input.value = '';
+                    loadCrm();
+                });
+        });
+    }
 
     // ---------- Ciclo ----------
 
@@ -702,5 +1164,6 @@
             var j = state.selected;
             if (j && (j.Status === 'working' || j.Status === 'pending' || state.counts[j.ID] !== state.places.length)) loadPlaces(false);
         });
+        if (state.view === 'crm') loadCrm();
     }, 3000);
 })();
