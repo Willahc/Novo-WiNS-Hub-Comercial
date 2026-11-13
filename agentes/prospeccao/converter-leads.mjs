@@ -129,6 +129,7 @@ for (const arq of csvFiles) {
 
     const link = modo === "ui" ? g(row, "google maps") : g(row, "link");
     const site = (modo === "ui" ? g(row, "site") : g(row, "website") || g(row, "web_site") || "") || "";
+    const instagram = g(row, "instagram") || "";
     const cat = modo === "ui" ? g(row, "categoria") : g(row, "category");
 
     const lead = {
@@ -145,6 +146,7 @@ for (const arq of csvFiles) {
       },
       phone: modo === "ui" ? g(row, "whatsapp") || g(row, "telefone") : g(row, "phone"),
       web_site: site,
+      instagram,
       review_count: parseInt(g(row, modo === "ui" ? "avaliacoes" : "review_count"), 10) || 0,
       review_rating: numDe(g(row, modo === "ui" ? "nota" : "review_rating")),
       emails: emailsDe(modo === "ui" ? g(row, "e-mail") : g(row, "emails")),

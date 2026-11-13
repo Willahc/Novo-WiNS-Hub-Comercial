@@ -343,8 +343,15 @@ const normalizar = (e) => {
     emails: emailsDe(e),
     cnpj: String(e.cnpj || "").replace(/\D/g, ""),
   };
-  l.temSite = l.site.length > 0;
-  l.instagram = extractInstagram(l.site);
+  const isSocialUrl = /instagram\.com|facebook\.com|linktr\.ee|wa\.me|whatsapp\.com|tiktok\.com/i.test(l.site);
+  l.temSite = l.site.length > 0 && !isSocialUrl;
+  const igFromField = e.instagram
+    ? (extractInstagram(e.instagram) || (() => {
+        const h = String(e.instagram).trim().replace(/^@/, "").replace(/\/$/, "");
+        return h ? { handle: `@${h}`, url: `https://www.instagram.com/${h}/` } : null;
+      })())
+    : null;
+  l.instagram = igFromField || extractInstagram(l.site);
   l.temInsta = !!l.instagram;
   l.temTel = l.telefone.replace(/\D/g, "").length >= 10;
   l.isCelular = isCelular(l.telefone);
@@ -394,13 +401,21 @@ async function enriquecer(l) {
   try {
     const res = await fetch(l.site, { signal: ctrl.signal, headers: { "User-Agent": "Mozilla/5.0" } });
     clearTimeout(t);
-    const html = (await res.text()).slice(0, 400000).toLowerCase();
+    const rawHtml = (await res.text()).slice(0, 400000);
+    const html = rawHtml.toLowerCase();
     // site bloqueado (Cloudflare/403) responde "ok-ish" com HTML mínimo:
     // sem título e quase vazio → é o gatilho do fallback Stealth
     if (!res.ok || html.length < 500) {
       const via2 = enriquecerViaScrapling(l.site);
       if (via2) return via2;
       if (!res.ok) return { erro: true, achado: null, detail: [`o site respondeu com erro ${res.status} (vale começar a mensagem citando o site fora do ar)`] };
+    }
+    if (!l.instagram) {
+      const ig = extractInstagram(rawHtml);
+      if (ig) {
+        l.instagram = ig;
+        l.temInsta = true;
+      }
     }
     const titulo = (html.match(/<title[^>]*>([^<]+)<\/title>/) || [])[1]?.trim();
     const achadas = FLAGS_SITE.filter(([pat]) => new RegExp(pat).test(html)).map(([, txt]) => txt);
