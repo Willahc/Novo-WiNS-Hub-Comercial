@@ -956,6 +956,8 @@
                 : '<span class="tag dark">Sem site</span>';
             var metaBadges = [];
             if (l.oportunidade) metaBadges.push('<span class="opp-badge">' + esc(l.oportunidade) + '</span>');
+            if (l.foraDoMaps) metaBadges.push('<span class="crm-meta-chip warn">📍 Fora do Maps</span>');
+            if (l.optanteMei) metaBadges.push('<span class="crm-meta-chip ok">MEI</span>');
             metaBadges.push('<span class="crm-meta-chip">' + int(l.avaliacoes) + ' aval.</span>');
             if (l.siteAudit) {
                 metaBadges.push('<span class="crm-meta-chip' + (l.siteAudit.score < 70 ? ' warn' : ' ok') + '">Site ' + l.siteAudit.score + '/100</span>');
@@ -1980,6 +1982,50 @@
     updateQtyDesc();
     updateRange();
     loadJobs();
+
+    function refreshCnaeSpStatus() {
+        if (!$('cnaeSpStatus')) return;
+        fetch('/api/crm/cnae-sp/status')
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (st) {
+                if (!st || !st.ok) return;
+                if (st.ready) {
+                    $('cnaeSpStatus').textContent = 'Base SP pronta: ' + int(st.total_mei) + ' MEIs (' + st.competencia + ')';
+                } else {
+                    $('cnaeSpStatus').textContent = st.progress || 'Base SP em preparação...';
+                }
+            })
+            .catch(function () {});
+    }
+    refreshCnaeSpStatus();
+
+    if ($('goCnaeSp')) {
+        $('goCnaeSp').addEventListener('click', function () {
+            var cnae = ($('cnae') ? $('cnae').value : '').trim();
+            var cidade = ($('loc') ? $('loc').value : '').trim() || 'São Paulo';
+            if (!cnae) {
+                toast('Informe o código CNAE (ex: 7500-1/00) para mapear MEIs de SP.');
+                if ($('cnae')) $('cnae').focus();
+                return;
+            }
+            var btn = this;
+            btn.disabled = true;
+            btn.textContent = 'Mapeando CNAE SP...';
+            fetch('/api/crm/cnae-sp/search', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cnae: cnae, cidade: cidade, meiOnly: true, limit: state.qty || 60, importToCrm: true })
+            })
+                .then(function (r) { return r.json(); })
+                .then(function (res) {
+                    if (!res.ok) { toast(res.error || 'Base CNAE SP ainda importando'); refreshCnaeSpStatus(); return; }
+                    toast(res.total + ' MEIs encontrados (' + res.foraDoMapsCount + ' fora do Maps)!');
+                    setView('crm');
+                })
+                .catch(function () { toast('Erro ao consultar base CNAE SP'); })
+                .finally(function () { btn.disabled = false; btn.textContent = 'Mapear MEI / CNAE (Base SP)'; });
+        });
+    }
 
     setInterval(function () {
         loadJobs().then(function () {

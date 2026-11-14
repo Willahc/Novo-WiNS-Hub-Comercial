@@ -28,3 +28,4 @@ examples/examples-api/**/__pycache__/
 examples/examples-api/**/*.py[cod]
 gmaps-output
 node_modules/
+data/

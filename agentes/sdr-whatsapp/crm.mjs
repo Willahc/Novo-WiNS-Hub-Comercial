@@ -402,6 +402,10 @@ export async function handleCrmRequest(req, res) {
         site: l.site || "",
         siteAudit: l.siteAudit || null,
         emailCadence: l.emailCadence || null,
+        foraDoMaps: !!l.foraDoMaps,
+        optanteMei: !!l.optanteMei,
+        cnpj: l.cnpj || "",
+        endereco: l.endereco || "",
         emitido: l.emitido || "",
         handoff: !!l.handoff,
         msgCount: msgs.length,
@@ -827,6 +831,104 @@ Formato obrigatório:
       sendJson(res, 200, { ok: true, reply, executed });
     } catch (e) {
       sendJson(res, 500, { error: e.message });
+    }
+    return true;
+  }
+
+  if (req.method === "GET" && path === "/api/crm/cnae-sp/status") {
+    try {
+      const { stdout } = await execFileAsync("python3", [resolve(PROSPECCAO_DIR, "cnpj-sp-query.py"), "status"], { timeout: 10000 });
+      sendJson(res, 200, JSON.parse(stdout));
+    } catch (e) {
+      sendJson(res, 500, { ok: false, error: e.message });
+    }
+    return true;
+  }
+
+  if (req.method === "POST" && path === "/api/crm/cnae-sp/search") {
+    try {
+      const body = await readJsonBody(req);
+      const cnae = String(body.cnae || "").trim();
+      const cidade = String(body.cidade || "São Paulo").trim();
+      const meiOnly = body.meiOnly !== false;
+      const limit = Math.min(200, Math.max(1, Number(body.limit) || 60));
+      const { stdout } = await execFileAsync(
+        "python3",
+        [resolve(PROSPECCAO_DIR, "cnpj-sp-query.py"), "search", JSON.stringify({ cnae, cidade, meiOnly, limit })],
+        { timeout: 20000 }
+      );
+      const parsed = JSON.parse(stdout);
+      if (!parsed.ok) {
+        sendJson(res, 400, parsed);
+        return true;
+      }
+
+      const db = loadStatus();
+      db.leads = db.leads || {};
+      const mapsPhones = new Set();
+      const mapsNames = new Set();
+      const liveRows = await loadLiveJobRows();
+      const arch = loadArchiveRows();
+      for (const r of [...liveRows, ...(arch.rows || [])]) {
+        const p = normalizePhone(r.phone);
+        if (p) mapsPhones.add(p.slice(-8));
+        if (r.title) mapsNames.add(String(r.title).toLowerCase().trim());
+      }
+      for (const l of Object.values(db.leads)) {
+        const p = normalizePhone(l.telefone);
+        if (p) mapsPhones.add(p.slice(-8));
+        if (l.nome) mapsNames.add(String(l.nome).toLowerCase().trim());
+      }
+
+      let maxId = Object.values(db.leads).reduce((m, l) => Math.max(m, Number(l.id) || 0), 1000);
+      let imported = 0;
+      let foraDoMapsCount = 0;
+      const items = (parsed.rows || []).map((row) => {
+        const nome = row.nome_fantasia || row.razao_social || `CNPJ ${row.cnpj}`;
+        const normPhone = normalizePhone(row.telefone || row.telefone2 || "");
+        const p8 = normPhone ? normPhone.slice(-8) : "";
+        const inMaps = (p8 && mapsPhones.has(p8)) || mapsNames.has(nome.toLowerCase().trim());
+        const foraDoMaps = !inMaps;
+        if (foraDoMaps) foraDoMapsCount++;
+        const scored = computeProspectScore({
+          temSite: false,
+          telefone: normPhone,
+          email: row.email || "",
+          avaliacoes: 0,
+          notaGoogle: 0,
+        });
+
+        const key = `cnae-${row.cnpj}`;
+        if (body.importToCrm !== false && !db.leads[key]) {
+          maxId++;
+          db.leads[key] = {
+            id: maxId,
+            nome,
+            nicho: `CNAE ${parsed.cnae}`,
+            cidade: parsed.municipio || cidade,
+            telefone: normPhone,
+            email: row.email || "",
+            canal: normPhone ? "whatsapp" : "email",
+            temSite: false,
+            site: "",
+            avaliacoes: 0,
+            score: scored.score,
+            state: "mapeado",
+            cnpj: row.cnpj,
+            optanteMei: row.optante_mei === "S",
+            foraDoMaps,
+            endereco: [row.endereco, row.bairro, row.cep].filter(Boolean).join(" · "),
+          };
+          imported++;
+        }
+        return { key, nome, cnpj: row.cnpj, telefone: normPhone, email: row.email || "", foraDoMaps, optanteMei: row.optante_mei === "S", score: scored.score };
+      });
+
+      if (imported > 0) saveStatus(db);
+      pushLog(`🏢 CNAE SP (${parsed.cnae} · ${parsed.municipio}): ${items.length} encontrados, ${foraDoMapsCount} fora do Maps, ${imported} adicionados ao CRM`);
+      sendJson(res, 200, { ok: true, municipio: parsed.municipio, cnae: parsed.cnae, total: items.length, foraDoMapsCount, imported, items });
+    } catch (e) {
+      sendJson(res, 500, { ok: false, error: e.message });
     }
     return true;
   }
