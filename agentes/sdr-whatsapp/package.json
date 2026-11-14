@@ -1,0 +1,16 @@
+{
+  "name": "sdr-whatsapp",
+  "version": "1.0.0",
+  "description": "Conecta seu **WhatsApp Business** via QR Code (Evolution API) na sua VPS para prospectar a fila do `gerar-fila.mjs`, conversar com **Claude** até o **\"Ok!\"** do cliente e te avisar no **Telegram** para você entrar e fechar o Pix.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "nodemailer": "^10.5.0"
+  }
+}

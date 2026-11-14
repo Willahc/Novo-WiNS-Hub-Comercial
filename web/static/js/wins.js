@@ -1691,7 +1691,7 @@
                 assistantState.history.push({ role: 'user', content: msg }, { role: 'assistant', content: reply });
                 if (res.executed) {
                     if (res.executed.type === 'search_maps') loadJobs();
-                    if (res.executed.type === 'audit_batch' || res.executed.type === 'start_dispatch' || res.executed.type === 'stop_dispatch') loadCrm();
+                    if (res.executed.type === 'audit_batch' || res.executed.type === 'start_dispatch' || res.executed.type === 'stop_dispatch' || res.executed.type === 'send_email' || res.executed.type === 'run_email_cadence') loadCrm();
                     if (res.executed.type === 'switch_view' && res.executed.view) setView(res.executed.view);
                 }
                 speakPtBr(reply, function () {

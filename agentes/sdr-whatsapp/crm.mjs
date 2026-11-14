@@ -10,6 +10,7 @@ import {
 } from "./lib.mjs";
 import { slugify, detectNiche } from "../entrega/previas/templates.mjs";
 import { auditSite, runLighthouse } from "../prospeccao/site-audit.mjs";
+import { verifySmtp, sendMail, sendLeadEmail, runDueEmailCadence } from "./email.mjs";
 
 const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -404,12 +405,17 @@ function startWorkerDispatch({ keys = [], dryRun = false, forceHorario = true } 
         .then((arr) => (arr || []).slice(0, 8).map((j) => `- ${j.Name} [${j.Status}]`).join("\n"))
         .catch(() => "");
 
+      const nowMs = Date.now();
+      const withEmailCount = allEntries.filter(([, l]) => l.email && String(l.email).includes("@")).length;
+      const dueFollowupsCount = allEntries.filter(([, l]) => l.email && l.emailCadence && l.emailCadence.step >= 1 && l.emailCadence.step < 3 && l.emailCadence.nextDueAt && nowMs >= l.emailCadence.nextDueAt).length;
+
       const sys = `Você é o Assistente Interno do WiNS Hub Comercial (copiloto de prospecção do William).
 Responda em português, curto e direto, e quando o usuário pedir para executar uma tarefa real, retorne a ação correspondente em JSON válido (sem markdown).
 
 ESTADO AO VIVO:
 - Worker de disparo rodando agora: ${workerState.running ? "SIM" : "NÃO"}
 - CRM: na_fila=${counts.na_fila}, enviado=${counts.enviado}, respondeu=${counts.respondeu}, proposto=${counts.proposto}, fechado=${counts.fechado}, descartado=${counts.descartado}
+- E-mail: ${withEmailCount} leads com e-mail, ${dueFollowupsCount} follow-ups D+3/D+7 vencidos
 - Buscas no Painel:\n${jobsList || "(nenhuma)"}
 - Próximos leads na fila (top 15):\n${filaList || "(fila vazia)"}
 
@@ -418,8 +424,10 @@ AÇÕES DISPONÍVEIS:
 2. {"type":"audit_batch","limit":5} — audita até N sites de leads no CRM que ainda não foram auditados.
 3. {"type":"start_dispatch","limit":5,"ids":[1039,1040],"dryRun":false} — inicia disparo real no WhatsApp para os IDs citados ou os primeiros "limit" da fila (use dryRun:true só se o usuário pedir simulação/teste).
 4. {"type":"stop_dispatch"} — para o disparo em andamento.
-5. {"type":"switch_view","view":"map"|"board"|"crm"|"dash"} — abre uma aba da ferramenta.
-6. null — apenas responder pergunta sem executar ação.
+5. {"type":"send_email","limit":5,"ids":[1039],"dryRun":false} — envia cold e-mail personalizado (via contato@winshubcomercial.com.br) para os IDs citados ou os primeiros "limit" leads com e-mail.
+6. {"type":"run_email_cadence","limit":10,"dryRun":false} — envia os follow-ups de e-mail D+3 e D+7 que estão vencidos.
+7. {"type":"switch_view","view":"map"|"board"|"crm"|"dash"} — abre uma aba da ferramenta.
+8. null — apenas responder pergunta sem executar ação.
 
 Formato obrigatório:
 {"reply":"resposta curta para o William","action":null ou objeto}`;
@@ -505,11 +513,95 @@ Formato obrigatório:
           workerState.proc.kill("SIGTERM");
           executed = { type: "stop_dispatch" };
         }
+      } else if (act?.type === "send_email") {
+        const want = Array.isArray(act.ids) && act.ids.length ? new Set(act.ids.map(Number)) : null;
+        const lim = Math.min(20, Math.max(1, Number(act.limit) || 5));
+        const targets = allEntries
+          .filter(([, l]) => l.email && String(l.email).includes("@") && (want ? want.has(l.id) : (!l.emailCadence && l.state !== "fechado" && l.state !== "descartado")))
+          .slice(0, want ? want.size : lim);
+        if (!targets.length) {
+          reply = "Não encontrei leads com e-mail válido disponíveis para envio.";
+        } else {
+          let sentCount = 0;
+          for (const [k, l] of targets) {
+            try {
+              const r = await sendLeadEmail(db, k, l, { step: 1, dryRun: !!act.dryRun });
+              if (r.ok) sentCount++;
+            } catch {}
+          }
+          if (!act.dryRun && sentCount) saveStatus(db);
+          pushLog(`✉️ Assistente enviou ${sentCount}/${targets.length} e-mail(s)`);
+          reply = `${act.dryRun ? "Simulação concluída" : "Envio concluído"}: ${sentCount} de ${targets.length} e-mail(s) processado(s).`;
+          executed = { type: "send_email", count: sentCount };
+        }
+      } else if (act?.type === "run_email_cadence") {
+        const lim = Math.min(30, Math.max(1, Number(act.limit) || 10));
+        const results = await runDueEmailCadence(db, { limit: lim, dryRun: !!act.dryRun });
+        const okCount = results.filter((r) => r.ok).length;
+        if (!act.dryRun && okCount) saveStatus(db);
+        pushLog(`✉️ Cadência de e-mail: ${okCount}/${results.length} follow-up(s)`);
+        reply = results.length ? `Cadência executada: ${okCount} follow-up(s) enviado(s).` : "Nenhum follow-up de e-mail vencido no momento.";
+        executed = { type: "run_email_cadence", count: okCount };
       } else if (act?.type === "switch_view") {
         executed = { type: "switch_view", view: act.view };
       }
 
       sendJson(res, 200, { ok: true, reply, executed });
+    } catch (e) {
+      sendJson(res, 500, { error: e.message });
+    }
+    return true;
+  }
+
+  if (req.method === "POST" && path === "/api/crm/email/test") {
+    try {
+      const body = await readJsonBody(req);
+      const to = String(body.to || process.env.SMTP_USER || "contato@winshubcomercial.com.br").trim();
+      await verifySmtp();
+      const r = await sendMail({
+        to,
+        subject: "Teste SMTP · WiNS Hub Comercial",
+        text: "Olá William!\n\nEste é um teste de envio real da conta contato@winshubcomercial.com.br pela WiNS Hub Comercial.\n\nTudo configurado e funcionando.",
+      });
+      sendJson(res, 200, { ok: true, to, messageId: r.messageId });
+    } catch (e) {
+      sendJson(res, 500, { error: e.message });
+    }
+    return true;
+  }
+
+  if (req.method === "POST" && path === "/api/crm/email/send") {
+    try {
+      const body = await readJsonBody(req);
+      const db = loadStatus();
+      const want = Array.isArray(body.ids) && body.ids.length ? new Set(body.ids.map(Number)) : null;
+      const lim = Math.min(30, Math.max(1, Number(body.limit) || 5));
+      const targets = Object.entries(db.leads || {})
+        .filter(([, l]) => l.email && String(l.email).includes("@") && (want ? want.has(l.id) : (!l.emailCadence && l.state !== "fechado" && l.state !== "descartado")))
+        .slice(0, want ? want.size : lim);
+      const results = [];
+      for (const [k, l] of targets) {
+        try {
+          results.push(await sendLeadEmail(db, k, l, { step: body.step ? Number(body.step) : undefined, dryRun: !!body.dryRun }));
+        } catch (e) {
+          results.push({ ok: false, id: l.id, nome: l.nome, error: e.message });
+        }
+      }
+      if (!body.dryRun && results.some((r) => r.ok)) saveStatus(db);
+      sendJson(res, 200, { ok: true, sent: results.filter((r) => r.ok).length, results });
+    } catch (e) {
+      sendJson(res, 500, { error: e.message });
+    }
+    return true;
+  }
+
+  if (req.method === "POST" && path === "/api/crm/email/cadence") {
+    try {
+      const body = await readJsonBody(req);
+      const db = loadStatus();
+      const results = await runDueEmailCadence(db, { limit: Number(body.limit) || 10, dryRun: !!body.dryRun });
+      if (!body.dryRun && results.some((r) => r.ok)) saveStatus(db);
+      sendJson(res, 200, { ok: true, sent: results.filter((r) => r.ok).length, results });
     } catch (e) {
       sendJson(res, 500, { error: e.message });
     }
