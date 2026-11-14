@@ -63,7 +63,10 @@ def main():
         mun_row = None
         for cand in loc_parts:
             mun_row = conn.execute(
-                "SELECT codigo, nome FROM municipios WHERE nome_norm = ? LIMIT 1",
+                """SELECT m.codigo, m.nome FROM municipios m
+                   WHERE m.nome_norm = ?
+                     AND EXISTS (SELECT 1 FROM estabelecimentos e WHERE e.municipio = m.codigo)
+                   LIMIT 1""",
                 (norm_text(cand),),
             ).fetchone()
             if mun_row:
@@ -73,7 +76,10 @@ def main():
                 if len(cand) < 4:
                     continue
                 mun_row = conn.execute(
-                    "SELECT codigo, nome FROM municipios WHERE nome_norm LIKE ? LIMIT 1",
+                    """SELECT m.codigo, m.nome FROM municipios m
+                       WHERE m.nome_norm LIKE ?
+                         AND EXISTS (SELECT 1 FROM estabelecimentos e WHERE e.municipio = m.codigo)
+                       LIMIT 1""",
                     (f"%{norm_text(cand)}%",),
                 ).fetchone()
                 if mun_row:
