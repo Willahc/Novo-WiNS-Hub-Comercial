@@ -72,7 +72,13 @@ def clean_email(raw: str) -> str:
     local, domain = e.split("@", 1)
     if domain in ACCOUNTING_DOMAINS:
         return ""
-    if "contabil" in domain or local.startswith(ACCOUNTING_LOCAL_PREFIXES):
+    if (
+        "contabil" in domain
+        or "contabil" in local
+        or "contador" in domain
+        or "contador" in local
+        or local.startswith(ACCOUNTING_LOCAL_PREFIXES)
+    ):
         return ""
     if domain.endswith(".com.br") and domain == "gmail.com.br":
         return local + "@gmail.com"
@@ -233,6 +239,8 @@ def main():
     print("[2/4] Substituindo tabela e removendo redundâncias...", flush=True)
     conn.execute("DROP TABLE estabelecimentos")
     conn.execute("ALTER TABLE estabelecimentos_opt RENAME TO estabelecimentos")
+    conn.execute("DROP TABLE IF EXISTS empresas")
+    conn.execute("DROP TABLE IF EXISTS simples")
     conn.commit()
 
     print("[3/4] Criando índices compostos (covering)...", flush=True)
@@ -243,9 +251,10 @@ def main():
         CREATE INDEX idx_estab_cep ON estabelecimentos(cep);
     """)
 
-    print("[4/4] Rodando ANALYZE e checkpoint WAL...", flush=True)
+    print("[4/4] Rodando ANALYZE, VACUUM e checkpoint WAL...", flush=True)
     conn.execute("ANALYZE")
     conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    conn.execute("VACUUM")
     conn.close()
 
     elapsed = time.time() - t0

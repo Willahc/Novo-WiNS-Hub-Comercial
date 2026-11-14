@@ -43,7 +43,8 @@ def main():
             print(json.dumps({"ok": False, "error": f"Base CNAE SP ainda importando: {meta.get('progress', '')}"}))
             return
 
-        cnae_raw = "".join(c for c in str(payload.get("cnae", "")) if c.isdigit())
+        cnae_input = str(payload.get("cnae", "")).strip()
+        cnae_raw = "".join(c for c in cnae_input if c.isdigit())
         cidade_raw = str(payload.get("cidade", "São Paulo")).split(",")[0].split("-")[0].strip()
         mei_only = bool(payload.get("meiOnly", True))
         limit = min(200, max(1, int(payload.get("limit", 60))))
@@ -64,12 +65,30 @@ def main():
         mun_cod = mun_row["codigo"]
         where = ["municipio = ?"]
         params = [mun_cod]
+        cnae_label = cnae_raw
         if len(cnae_raw) == 7:
             where.append("cnae_principal = ?")
             params.append(cnae_raw)
         elif len(cnae_raw) >= 4:
             where.append("cnae_principal LIKE ?")
             params.append(f"{cnae_raw}%")
+        elif cnae_input:
+            kw = norm_text(cnae_input)
+            tokens = [t for t in kw.split() if len(t) >= 3]
+            if not tokens:
+                tokens = [kw]
+            matched_codes = [
+                r["codigo"]
+                for r in conn.execute("SELECT codigo, descricao FROM cnaes").fetchall()
+                if all(t in norm_text(r["descricao"]) for t in tokens)
+            ][:20]
+            if not matched_codes:
+                print(json.dumps({"ok": False, "error": f"Nenhum CNAE encontrado para '{cnae_input}'"}))
+                return
+            placeholders = ",".join("?" for _ in matched_codes)
+            where.append(f"cnae_principal IN ({placeholders})")
+            params.extend(matched_codes)
+            cnae_label = matched_codes[0] if len(matched_codes) == 1 else f"{cnae_input} ({len(matched_codes)} CNAEs)"
         if mei_only:
             where.append("optante_mei = 'S'")
 
@@ -87,7 +106,7 @@ def main():
         print(json.dumps({
             "ok": True,
             "municipio": mun_row["nome"],
-            "cnae": cnae_raw,
+            "cnae": cnae_label,
             "meiOnly": mei_only,
             "count": len(rows),
             "rows": rows,
