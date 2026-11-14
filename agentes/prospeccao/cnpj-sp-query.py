@@ -15,6 +15,14 @@ def norm_text(s: str) -> str:
     return " ".join(s.upper().strip().split())
 
 
+def stem_pt(token: str) -> str:
+    if len(token) >= 6 and token.endswith(("OS", "AS", "ES")):
+        return token[:-2]
+    if len(token) >= 5 and token.endswith(("O", "A", "S")):
+        return token[:-1]
+    return token
+
+
 def main():
     cmd = sys.argv[1] if len(sys.argv) > 1 else "status"
     if not DB_PATH.exists():
@@ -74,9 +82,9 @@ def main():
             params.append(f"{cnae_raw}%")
         elif cnae_input:
             kw = norm_text(cnae_input)
-            tokens = [t for t in kw.split() if len(t) >= 3]
+            tokens = [stem_pt(t) for t in kw.split() if len(t) >= 3]
             if not tokens:
-                tokens = [kw]
+                tokens = [stem_pt(kw)]
             matched_codes = [
                 r["codigo"]
                 for r in conn.execute("SELECT codigo, descricao FROM cnaes").fetchall()
