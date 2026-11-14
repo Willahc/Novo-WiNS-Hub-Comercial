@@ -189,6 +189,44 @@ function loadArchiveRows() {
   return archiveCache.data;
 }
 
+let liveJobsCache = { at: 0, rows: [] };
+
+async function loadLiveJobRows() {
+  if (Date.now() - liveJobsCache.at < 20000) return liveJobsCache.rows;
+  try {
+    const jobsRes = await fetch("http://127.0.0.1:8080/api/v1/jobs");
+    if (!jobsRes.ok) return liveJobsCache.rows;
+    const jobs = await jobsRes.json();
+    const out = [];
+    for (const j of (jobs || []).slice(0, 25)) {
+      try {
+        const pr = await fetch(`http://127.0.0.1:8080/api/v1/jobs/${encodeURIComponent(j.ID)}/places`);
+        if (!pr.ok) continue;
+        const places = await pr.json();
+        for (const p of places || []) {
+          if (!p.title) continue;
+          out.push({
+            title: p.title,
+            category: p.category || "",
+            city: p.city || p.borough || "",
+            phone: p.phone || "",
+            website: p.website || "",
+            emails: p.emails || "",
+            rating: Number(p.review_rating || p.rating) || 0,
+            reviews: Number(p.review_count || p.reviews) || 0,
+            link: p.link || "",
+            source: j.Name || "Busca Maps",
+          });
+        }
+      } catch {}
+    }
+    liveJobsCache = { at: Date.now(), rows: out };
+    return out;
+  } catch {
+    return liveJobsCache.rows;
+  }
+}
+
 function computeProspectScore({ temSite, telefone, email, avaliacoes = 0, notaGoogle = 0, siteAudit = null }) {
   let score = 0;
   if (!temSite) score += 35;
@@ -375,8 +413,9 @@ export async function handleCrmRequest(req, res) {
     if (dbDirty) saveStatus(db);
 
     const arch = loadArchiveRows();
+    const liveRows = await loadLiveJobRows();
     let scrapIdx = 1;
-    for (const row of arch.rows || []) {
+    for (const row of [...liveRows, ...(arch.rows || [])]) {
       const normPhone = normalizePhone(row.phone);
       const p8 = normPhone ? normPhone.slice(-8) : "";
       const nameKey = `${String(row.title || "").toLowerCase().trim()}|${String(row.city || "").toLowerCase().trim()}`;
