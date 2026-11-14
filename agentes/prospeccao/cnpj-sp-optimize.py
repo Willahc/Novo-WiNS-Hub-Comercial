@@ -35,19 +35,30 @@ EMAIL_RE = re.compile(r"^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}$")
 WS_RE = re.compile(r"\s+")
 
 
-def clean_phone(raw: str) -> str:
+def clean_phone(raw: str) -> tuple[str, bool]:
+    """Normaliza telefone BR: remove DDI 55 / 0 à esquerda, descarta inválidos e adiciona o 9º dígito em celulares."""
     digits = "".join(ch for ch in (raw or "") if ch.isdigit())
+    if len(digits) in (12, 13) and digits.startswith("55"):
+        digits = digits[2:]
+    if len(digits) in (11, 12) and digits.startswith("0"):
+        digits = digits[1:]
     if len(digits) not in (10, 11):
-        return ""
+        return "", False
     ddd = int(digits[:2])
     if ddd < 11 or ddd > 99:
-        return ""
+        return "", False
     body = digits[2:]
     if len(set(digits)) <= 2 or len(set(body)) <= 1:
-        return ""
+        return "", False
     if body in ("12345678", "123456789", "87654321", "987654321"):
-        return ""
-    return digits
+        return "", False
+    added_9 = False
+    if len(digits) == 10 and digits[2] in "6789":
+        digits = digits[:2] + "9" + digits[2:]
+        added_9 = True
+    elif len(digits) == 11 and digits[2] != "9":
+        return "", False
+    return digits, added_9
 
 
 def is_mobile_br(phone: str) -> bool:
@@ -144,6 +155,7 @@ def main():
         "total": 0,
         "phones_cleaned": 0,
         "phones_promoted": 0,
+        "phones_added_9": 0,
         "emails_cleaned": 0,
         "emails_fixed": 0,
         "with_mobile": 0,
@@ -164,12 +176,20 @@ def main():
             (cnpj, basico, fantasia, razao, porte, mei, cnae, cnaes_sec,
              end, bairro, cep, mun, raw_t1, raw_t2, raw_email) = r
 
-            t1 = clean_phone(raw_t1)
-            t2 = clean_phone(raw_t2)
+            t1, a1 = clean_phone(raw_t1)
+            t2, a2 = clean_phone(raw_t2)
             if raw_t1 and not t1:
                 stats["phones_cleaned"] += 1
             if not t1 and t2:
                 t1, t2 = t2, ""
+                stats["phones_promoted"] += 1
+                if a2:
+                    stats["phones_added_9"] += 1
+            elif a1:
+                stats["phones_added_9"] += 1
+            # Se t1 for fixo e t2 for celular, promove o celular para t1 (prioridade WhatsApp)
+            if t1 and t2 and not is_mobile_br(t1) and is_mobile_br(t2):
+                t1, t2 = t2, t1
                 stats["phones_promoted"] += 1
 
             em = clean_email(raw_email)
