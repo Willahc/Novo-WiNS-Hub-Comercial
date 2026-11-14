@@ -2029,11 +2029,11 @@
 
     if ($('goCnaeSp')) {
         $('goCnaeSp').addEventListener('click', function () {
-            var cnae = ($('cnae') ? $('cnae').value : '').trim();
+            var cnae = ($('cnae') ? $('cnae').value : '').trim() || ($('q') ? $('q').value : '').trim();
             var cidade = ($('loc') ? $('loc').value : '').trim() || 'São Paulo';
             if (!cnae) {
-                toast('Informe o código CNAE (ex: 7500-1/00) para mapear MEIs de SP.');
-                if ($('cnae')) $('cnae').focus();
+                toast('Informe o que você procura (ex: veterinário) ou o código CNAE (ex: 7500-1/00).');
+                if ($('q')) $('q').focus();
                 return;
             }
             var btn = this;
