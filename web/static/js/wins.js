@@ -646,8 +646,8 @@
         $('boardMeta').textContent = metaText;
     }
 
-    segmented('filters', 'data-f', function (v) { state.filter = v; renderBoard(); });
-    $('filterText').addEventListener('input', renderBoard);
+    if ($('filters')) segmented('filters', 'data-f', function (v) { state.filter = v; renderBoard(); });
+    if ($('filterText')) $('filterText').addEventListener('input', renderBoard);
     if ($('boardHead')) {
         $('boardHead').addEventListener('click', function (e) {
             var th = e.target.closest('th[data-sort]');
@@ -674,14 +674,16 @@
     }
 
     // Clicar numa linha leva pro pin no mapa.
-    $('rows').addEventListener('change', function (e) {
-        var chk = e.target.closest('input.row-chk[data-pk]');
-        if (!chk) return;
-        var pk = chk.getAttribute('data-pk');
-        if (chk.checked) state.selectedKeys[pk] = true;
-        else delete state.selectedKeys[pk];
-        renderBoard();
-    });
+    if ($('rows')) {
+        $('rows').addEventListener('change', function (e) {
+            var chk = e.target.closest('input.row-chk[data-pk]');
+            if (!chk) return;
+            var pk = chk.getAttribute('data-pk');
+            if (chk.checked) state.selectedKeys[pk] = true;
+            else delete state.selectedKeys[pk];
+            renderBoard();
+        });
+    }
 
     if ($('selectAllRows')) {
         $('selectAllRows').addEventListener('change', function () {
@@ -696,18 +698,20 @@
         });
     }
 
-    $('rows').addEventListener('click', function (e) {
-        if (e.target.closest('a, input, label')) return;
-        var tr = e.target.closest('tr[data-i]');
-        if (!tr) return;
-        var p = renderBoard.rows[Number(tr.getAttribute('data-i'))];
-        var m = markerByKey[placeKey(p)];
-        setView('map');
-        if (m) {
-            map.flyTo(m.getLatLng(), 16, { duration: 0.6 });
-            setTimeout(function () { m.openPopup(); }, 650);
-        }
-    });
+    if ($('rows')) {
+        $('rows').addEventListener('click', function (e) {
+            if (e.target.closest('a, input, label')) return;
+            var tr = e.target.closest('tr[data-i]');
+            if (!tr) return;
+            var p = renderBoard.rows[Number(tr.getAttribute('data-i'))];
+            var m = markerByKey[placeKey(p)];
+            setView('map');
+            if (m) {
+                map.flyTo(m.getLatLng(), 16, { duration: 0.6 });
+                setTimeout(function () { m.openPopup(); }, 650);
+            }
+        });
+    }
 
     function setDrawer(open) {
         document.body.classList.toggle('drawer-open', !!open);
@@ -783,8 +787,8 @@
         toast(rows.length + ' empresas exportadas');
     }
 
-    $('download').addEventListener('click', function () { download(targetRows()); });
-    $('liveDownload').addEventListener('click', function () { download(state.places); });
+    if ($('download')) $('download').addEventListener('click', function () { download(targetRows()); });
+    if ($('liveDownload')) $('liveDownload').addEventListener('click', function () { download(state.places); });
 
     if ($('sendToCrm')) {
         $('sendToCrm').addEventListener('click', function () {
@@ -815,13 +819,15 @@
         });
     }
 
-    $('copyPhones').addEventListener('click', function () {
-        var phones = targetRows().map(function (p) { return p.phone; }).filter(Boolean);
-        if (!phones.length) return;
-        navigator.clipboard.writeText(phones.join('\n')).then(function () {
-            toast(phones.length + ' telefones copiados');
+    if ($('copyPhones')) {
+        $('copyPhones').addEventListener('click', function () {
+            var phones = targetRows().map(function (p) { return p.phone; }).filter(Boolean);
+            if (!phones.length) return;
+            navigator.clipboard.writeText(phones.join('\n')).then(function () {
+                toast(phones.length + ' telefones copiados');
+            });
         });
-    });
+    }
 
     // ---------- CRM Nativo ----------
 
