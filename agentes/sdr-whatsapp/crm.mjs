@@ -189,6 +189,87 @@ function loadArchiveRows() {
   return archiveCache.data;
 }
 
+function computeProspectScore({ temSite, telefone, email, avaliacoes = 0, notaGoogle = 0, siteAudit = null }) {
+  let score = 0;
+  if (!temSite) score += 35;
+  else if (siteAudit && typeof siteAudit.score === "number" && siteAudit.score < 70) score += 25;
+  else score += 10;
+
+  if (telefone) score += 25;
+  if (email) score += 15;
+
+  const rev = Number(avaliacoes) || 0;
+  if (rev >= 50) score += 15;
+  else if (rev >= 15) score += 10;
+  else if (rev >= 5) score += 5;
+
+  const rat = Number(notaGoogle) || 0;
+  if (rat >= 4.5) score += 10;
+  else if (rat >= 4.0) score += 5;
+
+  score = Math.min(100, Math.max(0, score));
+
+  let oportunidade = "Sem contato";
+  let canalIdeal = "none";
+  if (!temSite && telefone) {
+    oportunidade = "WhatsApp + Sem site";
+    canalIdeal = "whatsapp";
+  } else if (!temSite && !telefone && email) {
+    oportunidade = "E-mail + Sem site";
+    canalIdeal = "email";
+  } else if (temSite && telefone) {
+    oportunidade = siteAudit && siteAudit.score < 70 ? `WhatsApp + Site ${siteAudit.score}/100` : "WhatsApp + Site";
+    canalIdeal = "whatsapp";
+  } else if (temSite && !telefone && email) {
+    oportunidade = "E-mail + Site";
+    canalIdeal = "email";
+  }
+
+  return { score, oportunidade, canalIdeal };
+}
+
+function materializeLeads(db, rawLeads, targetState = "na_fila") {
+  db.leads = db.leads || {};
+  let maxId = Object.values(db.leads).reduce((m, l) => Math.max(m, Number(l.id) || 0), 1000);
+  const keys = [];
+  for (const item of rawLeads || []) {
+    if (!item || !item.key) continue;
+    if (db.leads[item.key]) {
+      if (targetState && ["mapeado", "na_fila"].includes(db.leads[item.key].state || "na_fila")) {
+        db.leads[item.key].state = targetState;
+      }
+      keys.push(item.key);
+      continue;
+    }
+    const newKey = slugify(item.nome || item.key);
+    if (db.leads[newKey]) {
+      if (targetState && ["mapeado", "na_fila"].includes(db.leads[newKey].state || "na_fila")) {
+        db.leads[newKey].state = targetState;
+      }
+      keys.push(newKey);
+      continue;
+    }
+    maxId++;
+    db.leads[newKey] = {
+      id: maxId,
+      nome: item.nome || "",
+      nicho: item.nicho || "Outro",
+      cidade: item.cidade || "",
+      telefone: item.telefone || "",
+      email: item.email || "",
+      canal: item.telefone ? "whatsapp" : "email",
+      temSite: !!item.temSite,
+      site: item.site || "",
+      avaliacoes: Number(item.avaliacoes) || 0,
+      notaGoogle: Number(item.notaGoogle) || 0,
+      score: Number(item.score) || 0,
+      state: targetState || "na_fila",
+    };
+    keys.push(newKey);
+  }
+  return keys;
+}
+
 export async function handleCrmRequest(req, res) {
   const url = new URL(req.url, "http://localhost");
   const path = url.pathname;
@@ -252,6 +333,16 @@ export async function handleCrmRequest(req, res) {
       const igHandle = l.instagram || (igMatch && !/^(p|reel|reels|stories|explore|accounts|tv)$/i.test(igMatch[1]) ? `@${igMatch[1]}` : "");
       const igUrl = l.instagramUrl || (igHandle ? `https://www.instagram.com/${igHandle.replace(/^@/, "")}/` : "");
 
+      const emailStr = l.email || "";
+      const scored = computeProspectScore({
+        temSite: !!l.temSite,
+        telefone: normPhone,
+        email: emailStr,
+        avaliacoes: l.avaliacoes || 0,
+        notaGoogle: l.notaGoogle || 0,
+        siteAudit: l.siteAudit || null,
+      });
+
       return {
         key,
         id: l.id,
@@ -260,12 +351,15 @@ export async function handleCrmRequest(req, res) {
         nichoGrupo: detectNiche(nicho),
         cidade: l.cidade,
         telefone: normPhone,
-        email: l.email || "",
+        email: emailStr,
         instagram: igHandle,
         instagramUrl: igUrl,
         state: st,
-        score: l.score || 0,
+        score: scored.score,
+        oportunidade: scored.oportunidade,
+        canalIdeal: scored.canalIdeal,
         avaliacoes: l.avaliacoes || 0,
+        notaGoogle: l.notaGoogle || 0,
         temSite: !!l.temSite,
         site: l.site || "",
         siteAudit: l.siteAudit || null,
@@ -304,6 +398,15 @@ export async function handleCrmRequest(req, res) {
       if (!byNiche[nicho]) byNiche[nicho] = { nicho, total: 0, na_fila: 0, enviados: 0, respostas: 0, fechados: 0 };
       byNiche[nicho].total++;
 
+      const scored = computeProspectScore({
+        temSite,
+        telefone: normPhone,
+        email: emailFirst,
+        avaliacoes: row.reviews || 0,
+        notaGoogle: row.rating || 0,
+        siteAudit: null,
+      });
+
       leads.push({
         key: `scraped:${slugify(row.title)}:${scrapIdx++}`,
         id: null,
@@ -316,8 +419,11 @@ export async function handleCrmRequest(req, res) {
         instagram: igHandle,
         instagramUrl: igUrl,
         state: "mapeado",
-        score: 0,
+        score: scored.score,
+        oportunidade: scored.oportunidade,
+        canalIdeal: scored.canalIdeal,
         avaliacoes: row.reviews || 0,
+        notaGoogle: row.rating || 0,
         temSite,
         site: temSite ? siteRaw : "",
         siteAudit: null,
@@ -335,8 +441,8 @@ export async function handleCrmRequest(req, res) {
       const ta = a.lastMsgAt ? Date.parse(a.lastMsgAt) : 0;
       const tb = b.lastMsgAt ? Date.parse(b.lastMsgAt) : 0;
       if (tb !== ta) return tb - ta;
-      if ((b.id || 0) !== (a.id || 0)) return (b.id || 0) - (a.id || 0);
-      return (b.score || 0) - (a.score || 0);
+      if ((b.score || 0) !== (a.score || 0)) return (b.score || 0) - (a.score || 0);
+      return (b.avaliacoes || 0) - (a.avaliacoes || 0);
     });
 
     const persistentLogs = readActivity(80);
@@ -450,9 +556,47 @@ function startWorkerDispatch({ keys = [], dryRun = false, forceHorario = true } 
   return { ok: true, running: true };
 }
 
+  if (req.method === "POST" && path === "/api/crm/simulate") {
+    try {
+      const body = await readJsonBody(req).catch(() => ({}));
+      const list = Array.isArray(body.leads) ? body.leads : [];
+      const items = list.map((l) => {
+        const hasWa = !!normalizePhone(l.telefone);
+        const hasEm = !!(l.email && String(l.email).includes("@"));
+        const canal = hasWa ? "whatsapp" : hasEm ? "email" : "none";
+        const oferta = !l.temSite ? "Site novo + Prévia personalizada" : "Redesign / Raio-X de Conversão";
+        return {
+          key: l.key,
+          nome: l.nome,
+          score: l.score || 0,
+          oportunidade: l.oportunidade || "",
+          canal,
+          contato: hasWa ? normalizePhone(l.telefone) : (hasEm ? l.email : "Sem contato"),
+          oferta,
+        };
+      });
+      sendJson(res, 200, {
+        ok: true,
+        total: items.length,
+        whatsappReady: items.filter((i) => i.canal === "whatsapp").length,
+        emailReady: items.filter((i) => i.canal === "email").length,
+        noContact: items.filter((i) => i.canal === "none").length,
+        items,
+      });
+    } catch (e) {
+      sendJson(res, 400, { error: e.message });
+    }
+    return true;
+  }
+
   if (req.method === "POST" && path === "/api/crm/start") {
     const body = await readJsonBody(req).catch(() => ({}));
-    const keys = Array.isArray(body.keys) ? body.keys.filter(Boolean) : [];
+    let keys = Array.isArray(body.keys) ? body.keys.filter(Boolean) : [];
+    if (Array.isArray(body.leads) && body.leads.length) {
+      const db = loadStatus();
+      keys = materializeLeads(db, body.leads, "na_fila");
+      saveStatus(db);
+    }
     const started = startWorkerDispatch({
       keys,
       dryRun: !!body.dryRun,
@@ -521,7 +665,7 @@ AÇÕES DISPONÍVEIS:
 4. {"type":"stop_dispatch"} — para o disparo em andamento.
 5. {"type":"send_email","limit":5,"ids":[1039],"dryRun":false} — envia cold e-mail personalizado (via contato@winshubcomercial.com.br) para os IDs citados ou os primeiros "limit" leads com e-mail.
 6. {"type":"run_email_cadence","limit":10,"dryRun":false} — envia os follow-ups de e-mail D+3 e D+7 que estão vencidos.
-7. {"type":"switch_view","view":"map"|"board"|"crm"} — abre uma aba da ferramenta (board = Painel + Dashboard).
+7. {"type":"switch_view","view":"map"|"dash"|"crm"} — abre uma aba da ferramenta (dash = Dashboard, crm = Central de Prospecção).
 8. null — apenas responder pergunta sem executar ação.
 
 Formato obrigatório:
@@ -669,11 +813,17 @@ Formato obrigatório:
     try {
       const body = await readJsonBody(req);
       const db = loadStatus();
-      const want = Array.isArray(body.ids) && body.ids.length ? new Set(body.ids.map(Number)) : null;
-      const lim = Math.min(30, Math.max(1, Number(body.limit) || 5));
-      const targets = Object.entries(db.leads || {})
-        .filter(([, l]) => l.email && String(l.email).includes("@") && (want ? want.has(l.id) : (!l.emailCadence && l.state !== "fechado" && l.state !== "descartado")))
-        .slice(0, want ? want.size : lim);
+      let targets = [];
+      if (Array.isArray(body.leads) && body.leads.length) {
+        const keys = materializeLeads(db, body.leads, "na_fila");
+        targets = keys.map((k) => [k, db.leads[k]]).filter(([, l]) => l && l.email && String(l.email).includes("@"));
+      } else {
+        const want = Array.isArray(body.ids) && body.ids.length ? new Set(body.ids.map(Number)) : null;
+        const lim = Math.min(30, Math.max(1, Number(body.limit) || 5));
+        targets = Object.entries(db.leads || {})
+          .filter(([, l]) => l.email && String(l.email).includes("@") && (want ? want.has(l.id) : (!l.emailCadence && l.state !== "fechado" && l.state !== "descartado")))
+          .slice(0, want ? want.size : lim);
+      }
       const results = [];
       for (const [k, l] of targets) {
         try {

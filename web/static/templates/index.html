@@ -13,7 +13,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&family=Space+Grotesk:wght@600;700&display=swap">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
-    <link rel="stylesheet" href="/static/css/wins.css?v=20261114a">
+    <link rel="stylesheet" href="/static/css/wins.css?v=20261114b">
 </head>
 <body>
     <div id="map"></div>
@@ -32,7 +32,7 @@
             <button type="button" class="drawer-close" id="drawerClose" aria-label="Fechar menu">✕</button>
             <div class="seg" id="viewSeg">
                 <button type="button" data-view="map" class="on">Mapa</button>
-                <button type="button" data-view="board">Painel</button>
+                <button type="button" data-view="dash">Dashboard</button>
                 <button type="button" data-view="crm">CRM</button>
             </div>
         </header>
@@ -136,120 +136,33 @@
         <button type="button" class="ghost" id="liveDownload">Baixar planilha</button>
     </div>
 
-    <main class="board" id="board" hidden>
-        <div class="board-empty" id="boardEmpty">
-            <p>Escolha uma busca em <b>Suas buscas</b> pra ver as empresas aqui.</p>
-        </div>
-        <div class="board-main" id="boardMain" hidden>
+    <main class="board" id="dashView" hidden>
+        <div class="board-main">
             <div class="board-head">
                 <div>
-                    <h1 id="boardTitle"></h1>
-                    <div class="board-meta" id="boardMeta"></div>
-                </div>
-                <div class="board-actions">
-                    <button type="button" class="ghost" id="copyPhones">Copiar telefones</button>
-                    <button type="button" class="ghost" id="sendToCrm">Enviar para Agentes</button>
-                    <button type="button" class="primary small" id="download">Baixar planilha</button>
-                </div>
-            </div>
-            <div class="stats" id="stats"></div>
-            <div class="board-tools">
-                <div class="chips" id="filters">
-                    <button type="button" data-f="all" class="on">Todas</button>
-                    <button type="button" data-f="nosite">Sem site</button>
-                    <button type="button" data-f="social">Só rede social</button>
-                    <button type="button" data-f="whats">WhatsApp</button>
-                    <button type="button" data-f="email">Com e-mail</button>
-                </div>
-                <label class="field slim">
-                    <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-                    <input id="filterText" type="text" placeholder="Filtrar por nome ou bairro">
-                </label>
-            </div>
-            <div class="table-wrap">
-                <table>
-                    <thead>
-                        <tr id="boardHead">
-                            <th class="chk-col"><input type="checkbox" id="selectAllRows" title="Selecionar todos visíveis"></th>
-                            <th data-sort="title" class="sortable">Empresa <span class="sort-ind">⇅</span></th>
-                            <th data-sort="borough" class="sortable">Bairro <span class="sort-ind">⇅</span></th>
-                            <th data-sort="rating" class="num sortable">Nota <span class="sort-ind">⇅</span></th>
-                            <th data-sort="phone" class="sortable">Telefone <span class="sort-ind">⇅</span></th>
-                            <th data-sort="instagram" class="sortable">Instagram <span class="sort-ind">⇅</span></th>
-                            <th data-sort="site" class="sortable">Site <span class="sort-ind">⇅</span></th>
-                            <th></th>
-                        </tr>
-                    </thead>
-                    <tbody id="rows"></tbody>
-                </table>
-            </div>
-        </div>
-        <div class="board-main" id="dashSection" style="margin-top:24px;padding-top:20px;border-top:1px solid var(--border)">
-            <div class="board-head">
-                <div>
-                    <h1>Dashboard · Todos os Clientes</h1>
+                    <h1>Dashboard · Inteligência de Prospecção</h1>
                     <div class="board-meta" id="dashMeta">Carregando base mapeada e CRM...</div>
                 </div>
                 <div class="board-actions">
                     <button type="button" class="ghost" id="dashRefresh">Atualizar</button>
-                    <button type="button" class="primary small" id="dashExport">Exportar CSV</button>
+                    <button type="button" class="ghost" id="dashExport">Exportar CSV</button>
+                    <button type="button" class="primary small" id="dashGoCrm">Prospectar no CRM →</button>
                 </div>
             </div>
             <div class="stats" id="dashStats"></div>
             <div class="crm-panels dash-panels">
                 <div class="crm-card">
-                    <div class="crm-card-title">Funil Geral (Mapeados → Próximos → Fechados)</div>
+                    <div class="crm-card-title">Funil de Conversão (Scrap → Na fila → Enviados → Responderam → Fechados)</div>
                     <div class="dash-bars" id="dashFunnel"></div>
                 </div>
                 <div class="crm-card">
-                    <div class="crm-card-title">Top Buscas / Nichos</div>
+                    <div class="crm-card-title">Top Nichos Mapeados</div>
                     <div class="dash-bars" id="dashNiches"></div>
                 </div>
             </div>
-            <div class="board-tools dash-tools">
-                <div class="chips" id="dashStageFilters">
-                    <button type="button" data-df="all" class="on">Todos</button>
-                    <button type="button" data-df="proximo">Próximos (Na fila)</button>
-                    <button type="button" data-df="mapeado">Mapeados (novos)</button>
-                    <button type="button" data-df="enviado">Enviados</button>
-                    <button type="button" data-df="respondeu">Responderam+</button>
-                    <button type="button" data-df="fechado">Fechados</button>
-                </div>
-                <div class="dash-selects">
-                    <select id="dashJobFilter" class="dash-select" aria-label="Filtrar por busca">
-                        <option value="all">Todas as buscas</option>
-                    </select>
-                    <select id="dashDigitalFilter" class="dash-select" aria-label="Filtrar por presença digital">
-                        <option value="all">Presença: Todas</option>
-                        <option value="nosite">Sem site próprio</option>
-                        <option value="social">Só rede social</option>
-                        <option value="site">Com site próprio</option>
-                        <option value="ig">Com Instagram</option>
-                        <option value="noig">Sem Instagram</option>
-                        <option value="whats">Com WhatsApp</option>
-                        <option value="email">Com E-mail</option>
-                    </select>
-                    <label class="field slim">
-                        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-                        <input id="dashSearch" type="text" placeholder="Buscar empresa, nicho, cidade ou @ig">
-                    </label>
-                </div>
-            </div>
-            <div class="table-wrap">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Empresa</th>
-                            <th>Origem / Busca</th>
-                            <th>Telefone / WhatsApp</th>
-                            <th>Instagram</th>
-                            <th>Site</th>
-                            <th class="num">Nota</th>
-                            <th>Status</th>
-                        </tr>
-                    </thead>
-                    <tbody id="dashRows"></tbody>
-                </table>
+            <div class="crm-card" style="margin:0 32px 24px">
+                <div class="crm-card-title">Matriz de Oportunidades (Clique para filtrar no CRM)</div>
+                <div class="dash-opp-grid" id="dashOpportunities"></div>
             </div>
         </div>
     </main>
@@ -265,7 +178,8 @@
                     <label class="ghost" style="cursor:pointer;display:inline-flex;align-items:center">Importar CSV<input type="file" id="crmCsvInput" accept=".csv" hidden></label>
                     <button type="button" class="ghost" id="crmAuditAll">Auditar Sites</button>
                     <button type="button" class="ghost" id="crmDryRun">Simular</button>
-                    <button type="button" class="primary small" id="crmStart">Start Disparo</button>
+                    <button type="button" class="ghost" id="crmEmailBtn">Enviar E-mail</button>
+                    <button type="button" class="primary small" id="crmStart">Start WhatsApp</button>
                     <button type="button" class="ghost" id="crmStop" hidden>Parar</button>
                 </div>
             </div>
@@ -296,19 +210,29 @@
                     <button type="button" data-st="fechado">Fechado</button>
                     <button type="button" data-st="descartado">Descartado</button>
                 </div>
+                <select id="crmOppFilter" class="dash-select" aria-label="Filtrar por oportunidade">
+                    <option value="all">Todas oportunidades</option>
+                    <option value="wa_nosite">🔥 WhatsApp + Sem site</option>
+                    <option value="email_nosite">✉️ Só E-mail + Sem site</option>
+                    <option value="has_wa">📱 Com WhatsApp</option>
+                    <option value="has_email">✉️ Com E-mail</option>
+                    <option value="nosite">🌐 Sem site próprio</option>
+                </select>
                 <label class="field slim">
                     <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
                     <input id="crmSearch" type="text" placeholder="Buscar empresa, nicho ou cidade">
                 </label>
             </div>
+            <div class="crm-sim-box" id="crmSimBox" hidden></div>
             <div class="table-wrap">
                 <table>
                     <thead>
                         <tr>
                             <th class="chk-col"><input type="checkbox" id="crmSelectAll" title="Selecionar todos visíveis"></th>
-                            <th>Empresa</th>
+                            <th class="num">Score</th>
+                            <th>Empresa &amp; Oportunidade</th>
                             <th>Nicho / Cidade</th>
-                            <th>Instagram</th>
+                            <th>Contatos</th>
                             <th>Site</th>
                             <th>Etapa</th>
                             <th>Conversa</th>
@@ -345,9 +269,9 @@
             <svg viewBox="0 0 24 24"><path d="M12 21s-6-5.3-6-10a6 6 0 1 1 12 0c0 4.7-6 10-6 10Z"/><circle cx="12" cy="11" r="2.2"/></svg>
             <span>Mapa</span>
         </button>
-        <button type="button" data-view="board">
-            <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 10v10"/></svg>
-            <span>Painel</span>
+        <button type="button" data-view="dash">
+            <svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><rect x="7" y="10" width="3" height="7" rx="1"/><rect x="12" y="6" width="3" height="11" rx="1"/><rect x="17" y="13" width="3" height="4" rx="1"/></svg>
+            <span>Dashboard</span>
         </button>
         <button type="button" data-view="crm">
             <svg viewBox="0 0 24 24"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg>
@@ -391,6 +315,6 @@
     <div class="toast" id="toast"></div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-    <script src="/static/js/wins.js?v=20261114b"></script>
+    <script src="/static/js/wins.js?v=20261114c"></script>
 </body>
 </html>

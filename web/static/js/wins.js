@@ -552,6 +552,7 @@
     }
 
     function renderBoard() {
+        if (!$('board')) return;
         var job = state.selected;
         $('boardEmpty').hidden = !!job;
         $('boardMain').hidden = !job;
@@ -718,7 +719,7 @@
     if ($('jobs')) $('jobs').addEventListener('click', function () { setDrawer(false); });
 
     function setView(v) {
-        if (v === 'dash') v = 'board';
+        if (v === 'board') v = 'dash';
         state.view = v;
         setDrawer(false);
         document.body.classList.toggle('view-wide', v !== 'map');
@@ -730,13 +731,10 @@
                 b.classList.toggle('on', b.getAttribute('data-view') === v);
             });
         }
-        $('board').hidden = v !== 'board';
+        if ($('dashView')) $('dashView').hidden = v !== 'dash';
         if ($('crmView')) $('crmView').hidden = v !== 'crm';
         renderLive();
-        if (v === 'board') {
-            renderBoard();
-            loadDash(false);
-        }
+        if (v === 'dash') loadDash(false);
         if (v === 'crm') loadCrm();
     }
     segmented('viewSeg', 'data-view', setView);
@@ -904,15 +902,22 @@
         });
 
         var q = ($('crmSearch').value || '').trim().toLowerCase();
+        var opp = $('crmOppFilter') ? $('crmOppFilter').value : 'all';
         var list = (d.leads || []).filter(function (l) {
             if (crmState.filter !== 'all' && l.state !== crmState.filter) return false;
-            if (q && (l.nome + ' ' + l.nicho + ' ' + l.cidade).toLowerCase().indexOf(q) < 0) return false;
+            if (opp === 'wa_nosite' && !(!l.temSite && l.telefone)) return false;
+            if (opp === 'email_nosite' && !(!l.temSite && !l.telefone && l.email)) return false;
+            if (opp === 'has_wa' && !l.telefone) return false;
+            if (opp === 'has_email' && !l.email) return false;
+            if (opp === 'nosite' && l.temSite) return false;
+            if (q && (l.nome + ' ' + l.nicho + ' ' + l.cidade + ' ' + (l.email || '')).toLowerCase().indexOf(q) < 0) return false;
             return true;
         });
 
         var pickedCount = selectedCrmKeys().length;
-        $('crmStart').textContent = pickedCount ? 'Start Disparo (' + pickedCount + ')' : 'Start Disparo';
+        $('crmStart').textContent = pickedCount ? 'Start WhatsApp (' + pickedCount + ')' : 'Start WhatsApp';
         $('crmDryRun').textContent = pickedCount ? 'Simular (' + pickedCount + ')' : 'Simular';
+        if ($('crmEmailBtn')) $('crmEmailBtn').textContent = pickedCount ? 'Enviar E-mail (' + pickedCount + ')' : 'Enviar E-mail';
         if ($('crmSelectAll')) {
             var visChecked = list.filter(function (l) { return !!crmState.selectedKeys[l.key]; }).length;
             $('crmSelectAll').checked = list.length > 0 && visChecked === list.length;
@@ -920,7 +925,7 @@
         }
 
         if (!list.length) {
-            $('crmRows').innerHTML = '<tr><td colspan="9" class="t-empty">Nenhum lead nessa etapa.</td></tr>';
+            $('crmRows').innerHTML = '<tr><td colspan="10" class="t-empty">Nenhum lead nessa etapa/filtro.</td></tr>';
             return;
         }
 
@@ -928,23 +933,26 @@
         $('crmRows').innerHTML = list.map(function (l) {
             var checked = crmState.selectedKeys[l.key] ? ' checked' : '';
             var stLabel = ST_LABELS[l.state] || l.state;
+            var sc = Number(l.score) || 0;
+            var scCls = sc >= 75 ? 'hot' : sc >= 45 ? 'mid' : 'low';
             var siteStr = String(l.site || '').trim();
             var siteIsSocial = siteKind(siteStr) === 'social';
             var igHandle = l.instagram || instagramHandle(siteStr);
             var igUrl = l.instagramUrl || (instagramHandle(siteStr) ? siteStr : '');
-            var igCol = igHandle
-                ? '<a class="t-site" href="' + esc(igUrl) + '" target="_blank" rel="noopener">' + esc(igHandle) + '</a>'
-                : '<span class="t-cat">—</span>';
+            var contactParts = [];
+            if (l.telefone) contactParts.push('<a class="t-site" href="https://wa.me/' + esc(l.telefone) + '" target="_blank" rel="noopener">📱 ' + esc(l.telefone) + '</a>');
+            if (l.email) contactParts.push('<div class="t-cat">✉️ ' + esc(l.email) + (l.emailCadence ? ' (E' + l.emailCadence.step + '/3)' : '') + '</div>');
+            if (igHandle) contactParts.push('<div><a class="t-site" href="' + esc(igUrl) + '" target="_blank" rel="noopener">' + esc(igHandle) + '</a></div>');
+            var contactCol = contactParts.length ? contactParts.join('') : '<span class="t-cat">—</span>';
             var hasRealSite = l.temSite && siteStr && !siteIsSocial;
             var siteCol = hasRealSite
                 ? '<a class="t-site" href="' + esc(/^https?:\/\//i.test(siteStr) ? siteStr : ('https://' + siteStr)) + '" target="_blank" rel="noopener">' + esc(domain(siteStr)) + '</a>'
                 : '<span class="tag dark">Sem site</span>';
-            var metaBadges = [
-                '<span class="crm-meta-chip">★ ' + l.score + ' · ' + int(l.avaliacoes) + ' aval.</span>'
-            ];
+            var metaBadges = [];
+            if (l.oportunidade) metaBadges.push('<span class="opp-badge">' + esc(l.oportunidade) + '</span>');
+            metaBadges.push('<span class="crm-meta-chip">' + int(l.avaliacoes) + ' aval.</span>');
             if (l.siteAudit) {
                 metaBadges.push('<span class="crm-meta-chip' + (l.siteAudit.score < 70 ? ' warn' : ' ok') + '">Site ' + l.siteAudit.score + '/100</span>');
-                if (l.siteAudit.stack && l.siteAudit.stack.length) metaBadges.push('<span class="crm-meta-chip">' + esc(l.siteAudit.stack[0]) + '</span>');
             }
             if (l.lighthouse && l.lighthouse.perf != null) {
                 metaBadges.push('<span class="crm-meta-chip' + (l.lighthouse.perf < 70 ? ' warn' : ' ok') + '">LH ' + l.lighthouse.perf + '/100</span>');
@@ -952,9 +960,10 @@
             var chatAttrs = 'data-chat="' + esc(l.telefone) + '" data-key="' + esc(l.key) + '" data-nome="' + esc(l.nome) + '" data-nicho="' + esc(l.nicho) + '"';
             return '<tr>' +
                 '<td class="chk-col"><input type="checkbox" class="crm-chk" data-key="' + esc(l.key) + '"' + checked + '></td>' +
+                '<td class="num"><span class="score-pill ' + scCls + '">' + sc + '</span></td>' +
                 '<td><div class="t-name"><button type="button" class="crm-lead-btn" ' + chatAttrs + '>' + esc(l.nome) + '</button></div><div class="crm-sub-meta">' + metaBadges.join('') + '</div></td>' +
                 '<td><div class="crm-niche-main">' + esc(l.nicho) + '</div><div class="t-cat">' + esc(l.cidade) + '</div></td>' +
-                '<td>' + igCol + '</td>' +
+                '<td>' + contactCol + '</td>' +
                 '<td>' + siteCol + '</td>' +
                 '<td><span class="st-pill st-' + esc(l.state) + '">' + esc(stLabel) + '</span></td>' +
                 '<td><button type="button" class="crm-chat-btn" ' + chatAttrs + '>💬 ' + l.msgCount + '</button></td>' +
@@ -972,6 +981,7 @@
         }, 5000);
         segmented('crmFilters', 'data-st', function (v) { crmState.filter = v; renderCrm(); });
         $('crmSearch').addEventListener('input', renderCrm);
+        if ($('crmOppFilter')) $('crmOppFilter').addEventListener('change', renderCrm);
 
         $('crmRows').addEventListener('click', function (e) {
             var btn = e.target.closest('[data-chat]');
@@ -1160,26 +1170,101 @@
             });
         }
 
-        $('crmStart').addEventListener('click', function () {
-            var keys = selectedCrmKeys();
-            var msg = keys.length
-                ? 'Iniciar disparo REAL no WhatsApp para os ' + keys.length + ' lead(s) selecionado(s)?'
-                : 'Nenhum lead marcado — iniciar disparo REAL no WhatsApp para toda a fila (até o limite diário)?';
-            if (!confirm(msg)) return;
+        function selectedCrmLeads() {
+            var all = (crmState.data && crmState.data.leads) || [];
+            var sel = all.filter(function (l) { return !!crmState.selectedKeys[l.key]; });
+            return sel;
+        }
+
+        function runWhatsappStart(leadsList) {
+            var payload = leadsList.length
+                ? { dryRun: false, forceHorario: true, leads: leadsList }
+                : { dryRun: false, forceHorario: true, keys: [] };
             fetch('/api/crm/start', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ dryRun: false, forceHorario: true, keys: keys })
-            }).then(function () { toast('Disparo iniciado'); loadCrm(); });
+                body: JSON.stringify(payload)
+            }).then(function (r) { return r.json(); }).then(function (res) {
+                if (!res.ok) toast('Erro: ' + (res.error || 'falha ao iniciar'));
+                else toast('Disparo WhatsApp iniciado!');
+                if ($('crmSimBox')) $('crmSimBox').hidden = true;
+                loadCrm();
+            });
+        }
+
+        function runEmailBatch(leadsList) {
+            var payload = leadsList.length ? { leads: leadsList } : { limit: 5 };
+            fetch('/api/crm/email/send', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            }).then(function (r) { return r.json(); }).then(function (res) {
+                if (!res.ok) toast('Erro: ' + (res.error || 'falha no e-mail'));
+                else toast(res.sent + ' e-mail(s) enviado(s)!');
+                if ($('crmSimBox')) $('crmSimBox').hidden = true;
+                loadCrm();
+            });
+        }
+
+        $('crmStart').addEventListener('click', function () {
+            var leadsList = selectedCrmLeads();
+            var msg = leadsList.length
+                ? 'Iniciar disparo REAL no WhatsApp para os ' + leadsList.length + ' lead(s) selecionado(s)?'
+                : 'Nenhum lead marcado — iniciar disparo REAL no WhatsApp para a fila atual (até o limite diário)?';
+            if (!confirm(msg)) return;
+            runWhatsappStart(leadsList);
         });
 
+        if ($('crmEmailBtn')) {
+            $('crmEmailBtn').addEventListener('click', function () {
+                var leadsList = selectedCrmLeads();
+                var withEmail = leadsList.filter(function (l) { return l.email && l.email.indexOf('@') > 0; });
+                if (leadsList.length && !withEmail.length) {
+                    toast('Nenhum dos leads marcados possui e-mail.');
+                    return;
+                }
+                var msg = leadsList.length
+                    ? 'Enviar Cold E-mail real (contato@winshubcomercial.com.br) para ' + withEmail.length + ' lead(s)?'
+                    : 'Nenhum lead marcado — enviar Cold E-mail para os próximos 5 leads com e-mail?';
+                if (!confirm(msg)) return;
+                runEmailBatch(withEmail);
+            });
+        }
+
         $('crmDryRun').addEventListener('click', function () {
-            var keys = selectedCrmKeys();
-            fetch('/api/crm/start', {
+            var leadsList = selectedCrmLeads();
+            if (!leadsList.length) {
+                var visible = ((crmState.data && crmState.data.leads) || []).slice(0, 10);
+                leadsList = visible;
+            }
+            fetch('/api/crm/simulate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ dryRun: true, forceHorario: true, keys: keys })
-            }).then(function () { toast('Simulação iniciada'); loadCrm(); });
+                body: JSON.stringify({ leads: leadsList })
+            })
+                .then(function (r) { return r.json(); })
+                .then(function (sim) {
+                    var box = $('crmSimBox');
+                    if (!box || !sim.ok) return;
+                    box.hidden = false;
+                    box.innerHTML =
+                        '<div class="crm-sim-head">' +
+                        '<div><b>Simulação (' + sim.total + ' leads):</b> 📱 ' + sim.whatsappReady + ' WhatsApp · ✉️ ' + sim.emailReady + ' só E-mail · ⚪ ' + sim.noContact + ' sem contato</div>' +
+                        '<div style="display:flex;gap:8px">' +
+                        (sim.whatsappReady ? '<button type="button" class="primary small" id="simConfirmWa">Confirmar e Start WhatsApp (' + sim.whatsappReady + ')</button>' : '') +
+                        (sim.emailReady ? '<button type="button" class="ghost small" id="simConfirmEm">Enviar E-mail (' + sim.emailReady + ')</button>' : '') +
+                        '<button type="button" class="ghost small" id="simClose">Fechar</button>' +
+                        '</div></div>' +
+                        '<div class="crm-sim-list">' +
+                        sim.items.slice(0, 24).map(function (it) {
+                            var icon = it.canal === 'whatsapp' ? '📱' : it.canal === 'email' ? '✉️' : '⚪';
+                            return '<div class="crm-sim-item"><b>' + esc(it.nome) + '</b> <span class="score-pill mid">' + it.score + '</span><div class="t-cat">' + icon + ' ' + esc(it.contato) + ' · ' + esc(it.oferta) + '</div></div>';
+                        }).join('') +
+                        '</div>';
+                    if ($('simClose')) $('simClose').onclick = function () { box.hidden = true; };
+                    if ($('simConfirmWa')) $('simConfirmWa').onclick = function () { runWhatsappStart(leadsList); };
+                    if ($('simConfirmEm')) $('simConfirmEm').onclick = function () { runEmailBatch(leadsList.filter(function (l) { return l.email; })); };
+                });
         });
 
         $('crmStop').addEventListener('click', function () {
@@ -1488,6 +1573,34 @@
             return { label: k, count: bySource[k] };
         }).sort(function (a, b) { return b.count - a.count; }).slice(0, 6);
         renderDashBars('dashNiches', topSources, total);
+
+        if ($('dashOpportunities')) {
+            var waNoSite = all.filter(function (r) { return r.siteKind !== 'site' && !!r.wa; }).length;
+            var emNoSite = all.filter(function (r) { return r.siteKind !== 'site' && !r.wa && !!r.emails; }).length;
+            var hasWa = all.filter(function (r) { return !!r.wa; }).length;
+            var hasEm = all.filter(function (r) { return !!r.emails; }).length;
+            var oppCards = [
+                { f: 'wa_nosite', n: waNoSite, l: '🔥 WhatsApp + Sem site', sub: 'Maior taxa de conversão (Prévia + Whats)' },
+                { f: 'email_nosite', n: emNoSite, l: '✉️ Só E-mail + Sem site', sub: 'Ideal para Cold Email + Cadência D+0/D+3/D+7' },
+                { f: 'has_wa', n: hasWa, l: '📱 Total com WhatsApp', sub: 'Prontos para agente SDR WhatsApp' },
+                { f: 'has_email', n: hasEm, l: '✉️ Total com E-mail', sub: 'Prontos para prospecção via Hostinger SMTP' },
+                { f: 'nosite', n: semSite, l: '🌐 Total sem site próprio', sub: 'Oportunidade de Landing Page / Redesign' }
+            ];
+            $('dashOpportunities').innerHTML = oppCards.map(function (c) {
+                return '<button type="button" class="dash-opp-card" data-opp="' + c.f + '">' +
+                    '<div class="dash-opp-num">' + c.n + '</div>' +
+                    '<div class="dash-opp-lbl">' + c.l + '</div>' +
+                    '<div class="dash-opp-sub">' + c.sub + '</div>' +
+                    '</button>';
+            }).join('');
+            Array.prototype.forEach.call($('dashOpportunities').querySelectorAll('[data-opp]'), function (btn) {
+                btn.onclick = function () {
+                    if ($('crmOppFilter')) $('crmOppFilter').value = btn.getAttribute('data-opp');
+                    setView('crm');
+                };
+            });
+        }
+        if ($('dashGoCrm')) $('dashGoCrm').onclick = function () { setView('crm'); };
 
         var rows = dashFilteredRows();
         var visible = rows.slice(0, 250);
