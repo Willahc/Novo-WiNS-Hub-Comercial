@@ -13,7 +13,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&family=Space+Grotesk:wght@600;700&display=swap">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
-    <link rel="stylesheet" href="/static/css/wins.css?v=20261114b">
+    <link rel="stylesheet" href="/static/css/wins.css?v=20261114c">
 </head>
 <body>
     <div id="map"></div>
@@ -117,7 +117,18 @@
 
             <button type="button" class="primary" id="go">Buscar empresas</button>
             <button type="button" class="ghost" id="goCnaeSp" style="width:100%;margin-top:8px">Mapear MEI / CNAE (Base SP)</button>
-            <div class="row-desc" id="cnaeSpStatus" style="margin-top:6px;text-align:center"></div>
+            <div class="cnae-progress" id="cnaeSpProgressWrap" hidden>
+                <div class="cnae-progress-head">
+                    <span class="cnae-progress-label">
+                        <span class="cnae-dot" id="cnaeSpDot"></span>
+                        <span id="cnaeSpStatus">Verificando base SP...</span>
+                    </span>
+                    <span class="cnae-progress-pct" id="cnaeSpPct">0%</span>
+                </div>
+                <div class="cnae-bar-track" id="cnaeSpBarWrap">
+                    <div class="cnae-bar-fill" id="cnaeSpBar" style="width:0%"></div>
+                </div>
+            </div>
             <div class="error" id="err"></div>
 
             <section class="jobs">
@@ -317,6 +328,6 @@
     <div class="toast" id="toast"></div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-    <script src="/static/js/wins.js?v=20261114e"></script>
+    <script src="/static/js/wins.js?v=20261114f"></script>
 </body>
 </html>

@@ -1983,16 +1983,44 @@
     updateRange();
     loadJobs();
 
+    var cnaeSpPollTimer = null;
+
+    function estimateCnaeSpPct(st) {
+        if (!st) return 0;
+        if (st.ready) return 100;
+        var p = String(st.progress || '');
+        var m = p.match(/Estabelecimentos\s+(\d+)\s*\/\s*(\d+)/i);
+        if (m) return Math.max(4, Math.min(55, Math.round((Number(m[1]) / Number(m[2])) * 55)));
+        m = p.match(/Empresas\s+(\d+)\s*\/\s*(\d+)/i);
+        if (m) return Math.max(56, Math.min(82, 55 + Math.round((Number(m[1]) / Number(m[2])) * 27)));
+        if (/Simples|MEI/i.test(p)) return 88;
+        if (/Índice|Index|Finaliz/i.test(p)) return 95;
+        return 5;
+    }
+
     function refreshCnaeSpStatus() {
         if (!$('cnaeSpStatus')) return;
         fetch('/api/crm/cnae-sp/status')
             .then(function (r) { return r.ok ? r.json() : null; })
             .then(function (st) {
                 if (!st || !st.ok) return;
+                var wrap = $('cnaeSpProgressWrap');
+                var bar = $('cnaeSpBar');
+                var pctEl = $('cnaeSpPct');
+                if (wrap) wrap.hidden = false;
+                var pct = estimateCnaeSpPct(st);
+                if (bar) bar.style.width = pct + '%';
+                if (pctEl) pctEl.textContent = pct + '%';
                 if (st.ready) {
+                    if (wrap) wrap.classList.add('is-ready');
                     $('cnaeSpStatus').textContent = 'Base SP pronta: ' + int(st.total_mei) + ' MEIs (' + st.competencia + ')';
+                    if (cnaeSpPollTimer) { clearInterval(cnaeSpPollTimer); cnaeSpPollTimer = null; }
                 } else {
+                    if (wrap) wrap.classList.remove('is-ready');
                     $('cnaeSpStatus').textContent = st.progress || 'Base SP em preparação...';
+                    if (!cnaeSpPollTimer) {
+                        cnaeSpPollTimer = setInterval(refreshCnaeSpStatus, 4000);
+                    }
                 }
             })
             .catch(function () {});
