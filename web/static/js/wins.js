@@ -2042,7 +2042,7 @@
             fetch('/api/crm/cnae-sp/search', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ cnae: cnae, cidade: cidade, meiOnly: true, limit: state.qty || 60, importToCrm: true })
+                body: JSON.stringify({ cnae: cnae, cidade: cidade, meiOnly: false, limit: state.qty || 60, importToCrm: true })
             })
                 .then(function (r) { return r.json(); })
                 .then(function (res) {

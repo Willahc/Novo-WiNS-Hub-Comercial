@@ -62,27 +62,24 @@ def main():
             return
 
         mun_cod = mun_row["codigo"]
-        where = ["e.municipio = ?"]
+        where = ["municipio = ?"]
         params = [mun_cod]
         if len(cnae_raw) == 7:
-            where.append("e.cnae_principal = ?")
+            where.append("cnae_principal = ?")
             params.append(cnae_raw)
         elif len(cnae_raw) >= 4:
-            where.append("e.cnae_principal LIKE ?")
+            where.append("cnae_principal LIKE ?")
             params.append(f"{cnae_raw}%")
         if mei_only:
-            where.append("s.optante_mei = 'S'")
+            where.append("optante_mei = 'S'")
 
         sql = f"""
-            SELECT e.cnpj, e.nome_fantasia, emp.razao_social, emp.porte,
-                   e.cnae_principal, e.endereco, e.bairro, e.cep,
-                   e.telefone, e.telefone2, e.email,
-                   COALESCE(s.optante_mei, 'N') AS optante_mei
-            FROM estabelecimentos e
-            LEFT JOIN empresas emp ON emp.cnpj_basico = e.cnpj_basico
-            LEFT JOIN simples s ON s.cnpj_basico = e.cnpj_basico
+            SELECT cnpj, nome_fantasia, razao_social, porte,
+                   cnae_principal, endereco, bairro, cep,
+                   telefone, telefone2, email, optante_mei
+            FROM estabelecimentos
             WHERE {' AND '.join(where)}
-            ORDER BY (CASE WHEN e.telefone != '' THEN 0 ELSE 1 END), (CASE WHEN e.email != '' THEN 0 ELSE 1 END)
+            ORDER BY contact_score DESC
             LIMIT ?
         """
         params.append(limit)
