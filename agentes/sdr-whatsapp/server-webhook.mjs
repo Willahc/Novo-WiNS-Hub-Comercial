@@ -89,7 +89,7 @@ async function handleIncoming(incoming) {
     return;
   }
 
-  if (lead.state === "enviado" || lead.state === "visualizado") {
+  if (["na_fila", "enviado", "visualizado"].includes(lead.state)) {
     db.leads[key].state = "respondeu";
     saveStatus(db);
   }
@@ -142,9 +142,10 @@ async function handleIncoming(incoming) {
     await notifyTelegram(alerta);
     console.log(`[HANDOFF] ${lead.nome} transferido para o humano.`);
   } else if (parsed.acao === "descartar") {
-    db.leads[key].state = "descartado";
+    db.leads[key].semInteresseWa = true;
+    db.leads[key].state = "respondeu";
     saveStatus(db);
-    console.log(`[DESCARTADO] ${lead.nome}.`);
+    console.log(`[SEM INTERESSE WA] ${lead.nome} (mantido em respondeu).`);
   } else {
     if (parsed.interesse === true && !db.leads[key].notificadoInteresse) {
       db.leads[key].notificadoInteresse = true;

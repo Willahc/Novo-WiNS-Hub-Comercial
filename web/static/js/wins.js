@@ -718,6 +718,7 @@
     if ($('jobs')) $('jobs').addEventListener('click', function () { setDrawer(false); });
 
     function setView(v) {
+        if (v === 'dash') v = 'board';
         state.view = v;
         setDrawer(false);
         document.body.classList.toggle('view-wide', v !== 'map');
@@ -731,11 +732,12 @@
         }
         $('board').hidden = v !== 'board';
         if ($('crmView')) $('crmView').hidden = v !== 'crm';
-        if ($('dashView')) $('dashView').hidden = v !== 'dash';
         renderLive();
-        if (v === 'board') renderBoard();
+        if (v === 'board') {
+            renderBoard();
+            loadDash(false);
+        }
         if (v === 'crm') loadCrm();
-        if (v === 'dash') loadDash(false);
     }
     segmented('viewSeg', 'data-view', setView);
     if ($('mobileNav')) segmented('mobileNav', 'data-view', setView);
@@ -894,7 +896,7 @@
             return '<tr><td>' + esc(n.nicho) + '</td><td class="num">' + n.na_fila + '</td><td class="num">' + n.enviados + '</td><td class="num">' + n.respostas + '</td><td class="num">' + n.fechados + '</td></tr>';
         }).join('');
 
-        var ST_LABELS = { all: 'Todos', na_fila: 'Na fila', enviado: 'Enviado', respondeu: 'Respondeu', proposto: 'Proposto', fechado: 'Fechado', descartado: 'Descartado' };
+        var ST_LABELS = { all: 'Todos', mapeado: 'Scrap', na_fila: 'Na fila', enviado: 'Enviado', respondeu: 'Respondeu', proposto: 'Proposto', fechado: 'Fechado', descartado: 'Descartado' };
         Array.prototype.forEach.call(document.querySelectorAll('#crmFilters button[data-st]'), function (b) {
             var st = b.getAttribute('data-st');
             var cnt = st === 'all' ? (c.total || 0) : (c[st] || 0);
@@ -922,7 +924,7 @@
             return;
         }
 
-        var ST_LIST = ['na_fila', 'enviado', 'respondeu', 'proposto', 'fechado', 'descartado'];
+        var ST_LIST = ['mapeado', 'na_fila', 'enviado', 'respondeu', 'proposto', 'fechado', 'descartado'];
         $('crmRows').innerHTML = list.map(function (l) {
             var checked = crmState.selectedKeys[l.key] ? ' checked' : '';
             var stLabel = ST_LABELS[l.state] || l.state;
@@ -956,7 +958,7 @@
                 '<td>' + siteCol + '</td>' +
                 '<td><span class="st-pill st-' + esc(l.state) + '">' + esc(stLabel) + '</span></td>' +
                 '<td><button type="button" class="crm-chat-btn" ' + chatAttrs + '>💬 ' + l.msgCount + '</button></td>' +
-                '<td><a class="crm-prev-link" href="' + esc(l.previewUrl) + '" target="_blank" rel="noopener">Prévia ↗</a></td>' +
+                '<td>' + (l.previewUrl ? '<a class="crm-prev-link" href="' + esc(l.previewUrl) + '" target="_blank" rel="noopener">Prévia ↗</a>' : '<span class="t-cat">—</span>') + '</td>' +
                 '<td><select class="crm-select" data-key="' + esc(l.key) + '">' +
                 ST_LIST.map(function (s) { return '<option value="' + s + '"' + (l.state === s ? ' selected' : '') + '>' + (ST_LABELS[s] || s) + '</option>'; }).join('') +
                 '</select></td>' +
@@ -1004,10 +1006,11 @@
             }
             var sel = e.target.closest('select[data-key]');
             if (!sel) return;
+            var leadObj = (crmState.data && crmState.data.leads || []).find(function (x) { return x.key === sel.getAttribute('data-key'); });
             fetch('/api/crm/lead/status', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ key: sel.getAttribute('data-key'), state: sel.value })
+                body: JSON.stringify({ key: sel.getAttribute('data-key'), state: sel.value, lead: leadObj || null })
             }).then(function () { toast('Status atualizado'); loadCrm(); });
         });
 
@@ -1016,7 +1019,7 @@
                 var on = this.checked;
                 var d = crmState.data;
                 if (!d) return;
-                var ST_LABELS = { all: 'Todos', na_fila: 'Na fila', enviado: 'Enviado', respondeu: 'Respondeu', proposto: 'Proposto', fechado: 'Fechado', descartado: 'Descartado' };
+                var ST_LABELS = { all: 'Todos', mapeado: 'Scrap', na_fila: 'Na fila', enviado: 'Enviado', respondeu: 'Respondeu', proposto: 'Proposto', fechado: 'Fechado', descartado: 'Descartado' };
         Array.prototype.forEach.call(document.querySelectorAll('#crmFilters button[data-st]'), function (b) {
             var st = b.getAttribute('data-st');
             var cnt = st === 'all' ? (c.total || 0) : (c[st] || 0);
@@ -1228,7 +1231,7 @@
     }
 
     function loadDash(force) {
-        if (!$('dashView') || dashState.loading) return Promise.resolve();
+        if (!$('dashStats') || dashState.loading) return Promise.resolve();
         dashState.loading = true;
         if ($('dashMeta')) $('dashMeta').textContent = 'Sincronizando buscas do Maps e CRM...';
 

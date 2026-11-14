@@ -205,9 +205,11 @@ export async function handleCrmRequest(req, res) {
 
   if (req.method === "GET" && path === "/api/crm/overview") {
     const db = loadStatus();
+    let dbDirty = false;
     const rawLeads = Object.entries(db.leads || {});
     const counts = {
-      total: rawLeads.length,
+      total: 0,
+      mapeado: 0,
       na_fila: 0,
       enviado: 0,
       visualizado: 0,
@@ -218,10 +220,23 @@ export async function handleCrmRequest(req, res) {
     };
     const byNiche = {};
     const previewBase = (process.env.PREVIEW_BASE_URL || "/previa").replace(/\/$/, "");
+    const seenPhones = new Set();
+    const seenNames = new Set();
 
     const leads = rawLeads.map(([key, l]) => {
+      const normPhone = normalizePhone(l.telefone);
+      const msgs = normPhone ? getConversation(normPhone) : [];
+      if (msgs.some((m) => m.role === "user") && ["na_fila", "enviado", "visualizado"].includes(l.state)) {
+        l.state = "respondeu";
+        db.leads[key].state = "respondeu";
+        dbDirty = true;
+      }
       const st = l.state || "na_fila";
+      counts.total++;
       if (st in counts) counts[st]++;
+      if (normPhone) seenPhones.add(normPhone.slice(-8));
+      seenNames.add(`${String(l.nome || "").toLowerCase().trim()}|${String(l.cidade || "").toLowerCase().trim()}`);
+
       const nicho = l.nicho || "Outro";
       if (!byNiche[nicho]) {
         byNiche[nicho] = { nicho, total: 0, na_fila: 0, enviados: 0, respostas: 0, fechados: 0 };
@@ -232,8 +247,6 @@ export async function handleCrmRequest(req, res) {
       if (["respondeu", "proposto", "fechado"].includes(st)) byNiche[nicho].respostas++;
       if (st === "fechado") byNiche[nicho].fechados++;
 
-      const normPhone = normalizePhone(l.telefone);
-      const msgs = normPhone ? getConversation(normPhone) : [];
       const slug = `${l.id}-${slugify(l.nome)}`;
       const igMatch = String(l.instagramUrl || l.site || "").match(/instagram\.com\/([a-zA-Z0-9._]+)/i);
       const igHandle = l.instagram || (igMatch && !/^(p|reel|reels|stories|explore|accounts|tv)$/i.test(igMatch[1]) ? `@${igMatch[1]}` : "");
@@ -247,6 +260,7 @@ export async function handleCrmRequest(req, res) {
         nichoGrupo: detectNiche(nicho),
         cidade: l.cidade,
         telefone: normPhone,
+        email: l.email || "",
         instagram: igHandle,
         instagramUrl: igUrl,
         state: st,
@@ -255,6 +269,7 @@ export async function handleCrmRequest(req, res) {
         temSite: !!l.temSite,
         site: l.site || "",
         siteAudit: l.siteAudit || null,
+        emailCadence: l.emailCadence || null,
         emitido: l.emitido || "",
         handoff: !!l.handoff,
         msgCount: msgs.length,
@@ -262,6 +277,59 @@ export async function handleCrmRequest(req, res) {
         previewUrl: `${previewBase}/${slug}`,
       };
     });
+
+    if (dbDirty) saveStatus(db);
+
+    const arch = loadArchiveRows();
+    let scrapIdx = 1;
+    for (const row of arch.rows || []) {
+      const normPhone = normalizePhone(row.phone);
+      const p8 = normPhone ? normPhone.slice(-8) : "";
+      const nameKey = `${String(row.title || "").toLowerCase().trim()}|${String(row.city || "").toLowerCase().trim()}`;
+      if ((p8 && seenPhones.has(p8)) || seenNames.has(nameKey)) continue;
+      if (p8) seenPhones.add(p8);
+      seenNames.add(nameKey);
+
+      const emailFirst = String(row.emails || "").split(/[;,]/)[0].trim();
+      const siteRaw = String(row.website || "").trim();
+      const igMatch = siteRaw.match(/instagram\.com\/([a-zA-Z0-9._]+)/i);
+      const igHandle = igMatch && !/^(p|reel|reels|stories|explore|accounts|tv)$/i.test(igMatch[1]) ? `@${igMatch[1]}` : "";
+      const igUrl = igHandle ? `https://www.instagram.com/${igHandle.replace(/^@/, "")}/` : "";
+      const isSocial = /instagram\.com|facebook\.com|linktr\.ee|wa\.me/i.test(siteRaw);
+      const temSite = !!siteRaw && !isSocial;
+
+      counts.total++;
+      counts.mapeado++;
+      const nicho = row.category || "Outro";
+      if (!byNiche[nicho]) byNiche[nicho] = { nicho, total: 0, na_fila: 0, enviados: 0, respostas: 0, fechados: 0 };
+      byNiche[nicho].total++;
+
+      leads.push({
+        key: `scraped:${slugify(row.title)}:${scrapIdx++}`,
+        id: null,
+        nome: row.title,
+        nicho,
+        nichoGrupo: detectNiche(nicho),
+        cidade: row.city || "",
+        telefone: normPhone,
+        email: emailFirst,
+        instagram: igHandle,
+        instagramUrl: igUrl,
+        state: "mapeado",
+        score: 0,
+        avaliacoes: row.reviews || 0,
+        temSite,
+        site: temSite ? siteRaw : "",
+        siteAudit: null,
+        emailCadence: null,
+        emitido: "",
+        handoff: false,
+        msgCount: 0,
+        lastMsgAt: null,
+        previewUrl: "",
+        source: row.source || "Scrap",
+      });
+    }
 
     leads.sort((a, b) => {
       const ta = a.lastMsgAt ? Date.parse(a.lastMsgAt) : 0;
@@ -314,7 +382,34 @@ export async function handleCrmRequest(req, res) {
     try {
       const body = await readJsonBody(req);
       const db = loadStatus();
-      if (!body.key || !db.leads?.[body.key]) {
+      if (!body.key) {
+        sendJson(res, 400, { error: "Chave ausente" });
+        return true;
+      }
+      if (!db.leads?.[body.key] && String(body.key).startsWith("scraped:") && body.lead) {
+        const maxId = Object.values(db.leads || {}).reduce((m, l) => Math.max(m, Number(l.id) || 0), 1000);
+        const newKey = slugify(body.lead.nome || body.key);
+        db.leads = db.leads || {};
+        db.leads[newKey] = {
+          id: maxId + 1,
+          nome: body.lead.nome || "",
+          nicho: body.lead.nicho || "Outro",
+          cidade: body.lead.cidade || "",
+          telefone: body.lead.telefone || "",
+          email: body.lead.email || "",
+          canal: "whatsapp",
+          temSite: !!body.lead.temSite,
+          site: body.lead.site || "",
+          avaliacoes: body.lead.avaliacoes || 0,
+          score: 0,
+          state: body.state || "na_fila",
+        };
+        saveStatus(db);
+        pushLog(`[CRM] Lead "${db.leads[newKey].nome}" movido para ${body.state}`);
+        sendJson(res, 200, { ok: true, key: newKey });
+        return true;
+      }
+      if (!db.leads?.[body.key]) {
         sendJson(res, 404, { error: "Lead não encontrado" });
         return true;
       }
@@ -426,7 +521,7 @@ AÇÕES DISPONÍVEIS:
 4. {"type":"stop_dispatch"} — para o disparo em andamento.
 5. {"type":"send_email","limit":5,"ids":[1039],"dryRun":false} — envia cold e-mail personalizado (via contato@winshubcomercial.com.br) para os IDs citados ou os primeiros "limit" leads com e-mail.
 6. {"type":"run_email_cadence","limit":10,"dryRun":false} — envia os follow-ups de e-mail D+3 e D+7 que estão vencidos.
-7. {"type":"switch_view","view":"map"|"board"|"crm"|"dash"} — abre uma aba da ferramenta.
+7. {"type":"switch_view","view":"map"|"board"|"crm"} — abre uma aba da ferramenta (board = Painel + Dashboard).
 8. null — apenas responder pergunta sem executar ação.
 
 Formato obrigatório:

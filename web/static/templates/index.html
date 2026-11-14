@@ -34,7 +34,6 @@
                 <button type="button" data-view="map" class="on">Mapa</button>
                 <button type="button" data-view="board">Painel</button>
                 <button type="button" data-view="crm">CRM</button>
-                <button type="button" data-view="dash">Dash</button>
             </div>
         </header>
 
@@ -185,6 +184,74 @@
                 </table>
             </div>
         </div>
+        <div class="board-main" id="dashSection" style="margin-top:24px;padding-top:20px;border-top:1px solid var(--border)">
+            <div class="board-head">
+                <div>
+                    <h1>Dashboard · Todos os Clientes</h1>
+                    <div class="board-meta" id="dashMeta">Carregando base mapeada e CRM...</div>
+                </div>
+                <div class="board-actions">
+                    <button type="button" class="ghost" id="dashRefresh">Atualizar</button>
+                    <button type="button" class="primary small" id="dashExport">Exportar CSV</button>
+                </div>
+            </div>
+            <div class="stats" id="dashStats"></div>
+            <div class="crm-panels dash-panels">
+                <div class="crm-card">
+                    <div class="crm-card-title">Funil Geral (Mapeados → Próximos → Fechados)</div>
+                    <div class="dash-bars" id="dashFunnel"></div>
+                </div>
+                <div class="crm-card">
+                    <div class="crm-card-title">Top Buscas / Nichos</div>
+                    <div class="dash-bars" id="dashNiches"></div>
+                </div>
+            </div>
+            <div class="board-tools dash-tools">
+                <div class="chips" id="dashStageFilters">
+                    <button type="button" data-df="all" class="on">Todos</button>
+                    <button type="button" data-df="proximo">Próximos (Na fila)</button>
+                    <button type="button" data-df="mapeado">Mapeados (novos)</button>
+                    <button type="button" data-df="enviado">Enviados</button>
+                    <button type="button" data-df="respondeu">Responderam+</button>
+                    <button type="button" data-df="fechado">Fechados</button>
+                </div>
+                <div class="dash-selects">
+                    <select id="dashJobFilter" class="dash-select" aria-label="Filtrar por busca">
+                        <option value="all">Todas as buscas</option>
+                    </select>
+                    <select id="dashDigitalFilter" class="dash-select" aria-label="Filtrar por presença digital">
+                        <option value="all">Presença: Todas</option>
+                        <option value="nosite">Sem site próprio</option>
+                        <option value="social">Só rede social</option>
+                        <option value="site">Com site próprio</option>
+                        <option value="ig">Com Instagram</option>
+                        <option value="noig">Sem Instagram</option>
+                        <option value="whats">Com WhatsApp</option>
+                        <option value="email">Com E-mail</option>
+                    </select>
+                    <label class="field slim">
+                        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                        <input id="dashSearch" type="text" placeholder="Buscar empresa, nicho, cidade ou @ig">
+                    </label>
+                </div>
+            </div>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Empresa</th>
+                            <th>Origem / Busca</th>
+                            <th>Telefone / WhatsApp</th>
+                            <th>Instagram</th>
+                            <th>Site</th>
+                            <th class="num">Nota</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dashRows"></tbody>
+                </table>
+            </div>
+        </div>
     </main>
 
     <main class="board" id="crmView" hidden>
@@ -255,77 +322,6 @@
         </div>
     </main>
 
-    <main class="board" id="dashView" hidden>
-        <div class="board-main">
-            <div class="board-head">
-                <div>
-                    <h1>Dashboards · Todos os Clientes</h1>
-                    <div class="board-meta" id="dashMeta">Carregando base mapeada e CRM...</div>
-                </div>
-                <div class="board-actions">
-                    <button type="button" class="ghost" id="dashRefresh">Atualizar</button>
-                    <button type="button" class="primary small" id="dashExport">Exportar CSV</button>
-                </div>
-            </div>
-            <div class="stats" id="dashStats"></div>
-            <div class="crm-panels dash-panels">
-                <div class="crm-card">
-                    <div class="crm-card-title">Funil Geral (Mapeados → Próximos → Fechados)</div>
-                    <div class="dash-bars" id="dashFunnel"></div>
-                </div>
-                <div class="crm-card">
-                    <div class="crm-card-title">Top Buscas / Nichos</div>
-                    <div class="dash-bars" id="dashNiches"></div>
-                </div>
-            </div>
-            <div class="board-tools dash-tools">
-                <div class="chips" id="dashStageFilters">
-                    <button type="button" data-df="all" class="on">Todos</button>
-                    <button type="button" data-df="proximo">Próximos (Na fila)</button>
-                    <button type="button" data-df="mapeado">Mapeados (novos)</button>
-                    <button type="button" data-df="enviado">Enviados</button>
-                    <button type="button" data-df="respondeu">Responderam+</button>
-                    <button type="button" data-df="fechado">Fechados</button>
-                </div>
-                <div class="dash-selects">
-                    <select id="dashJobFilter" class="dash-select" aria-label="Filtrar por busca">
-                        <option value="all">Todas as buscas</option>
-                    </select>
-                    <select id="dashDigitalFilter" class="dash-select" aria-label="Filtrar por presença digital">
-                        <option value="all">Presença: Todas</option>
-                        <option value="nosite">Sem site próprio</option>
-                        <option value="social">Só rede social</option>
-                        <option value="site">Com site próprio</option>
-                        <option value="ig">Com Instagram</option>
-                        <option value="noig">Sem Instagram</option>
-                        <option value="whats">Com WhatsApp</option>
-                        <option value="email">Com E-mail</option>
-                    </select>
-                    <label class="field slim">
-                        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-                        <input id="dashSearch" type="text" placeholder="Buscar empresa, nicho, cidade ou @ig">
-                    </label>
-                </div>
-            </div>
-            <div class="table-wrap">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Empresa</th>
-                            <th>Origem / Busca</th>
-                            <th>Telefone / WhatsApp</th>
-                            <th>Instagram</th>
-                            <th>Site</th>
-                            <th class="num">Nota</th>
-                            <th>Status</th>
-                        </tr>
-                    </thead>
-                    <tbody id="dashRows"></tbody>
-                </table>
-            </div>
-        </div>
-    </main>
-
     <aside class="crm-drawer" id="crmDrawer" hidden>
         <div class="crm-drawer-head">
             <div>
@@ -356,10 +352,6 @@
         <button type="button" data-view="crm">
             <svg viewBox="0 0 24 24"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg>
             <span>CRM</span>
-        </button>
-        <button type="button" data-view="dash">
-            <svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><rect x="7" y="10" width="3" height="7" rx="1"/><rect x="12" y="6" width="3" height="11" rx="1"/><rect x="17" y="13" width="3" height="4" rx="1"/></svg>
-            <span>Dash</span>
         </button>
     </nav>
 
@@ -399,6 +391,6 @@
     <div class="toast" id="toast"></div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-    <script src="/static/js/wins.js?v=20261114a"></script>
+    <script src="/static/js/wins.js?v=20261114b"></script>
 </body>
 </html>

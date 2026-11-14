@@ -129,7 +129,7 @@ async function main() {
   const db = loadStatus();
   const todos = Object.entries(db.leads || {}).filter(([k]) => !ONLY_KEYS || ONLY_KEYS.has(k));
   const novos = todos
-    .filter(([, l]) => l.state === "na_fila" && l.canal === "whatsapp" && normalizePhone(l.telefone))
+    .filter(([, l]) => l.state === "na_fila" && !l.semWhatsapp && l.canal === "whatsapp" && normalizePhone(l.telefone))
     .sort((a, b) => (b[1].score || 0) - (a[1].score || 0))
     .map(([key, lead]) => ({ key, lead, tipo: "abertura" }));
 
@@ -156,10 +156,13 @@ async function main() {
     if (!DRY_RUN) {
       const waCheck = await checkWhatsApp(phone).catch(() => ({ exists: true }));
       if (!waCheck.exists) {
-        console.log(`⏭️ [${i + 1}/${fila.length}] ${lead.nome} (${phone}) não tem WhatsApp — marcado como descartado.`);
-        db.leads[key].state = "descartado";
-        db.leads[key].motivo = "sem_whatsapp";
-        saveStatus(db);
+        console.log(`⏭️ [${i + 1}/${fila.length}] ${lead.nome} (${phone}) não tem WhatsApp — mantido fora de descartado (disponível para e-mail).`);
+        const fresh = loadStatus();
+        if (fresh.leads?.[key]) {
+          fresh.leads[key].semWhatsapp = true;
+          fresh.leads[key].motivo = "sem_whatsapp";
+          saveStatus(fresh);
+        }
         continue;
       }
     }
@@ -180,15 +183,18 @@ async function main() {
         } else {
           await sendWhatsAppText(phone, texto);
         }
-        if (tipo === "followup") {
-          db.leads[key].followup_count = (db.leads[key].followup_count || 0) + 1;
-          db.leads[key].followup_em = new Date().toLocaleDateString("pt-BR");
-        } else {
-          db.leads[key].state = "enviado";
-          db.leads[key].emitido = new Date().toLocaleDateString("pt-BR");
-          db.leads[key].msg_enviada = texto;
+        const fresh = loadStatus();
+        if (fresh.leads?.[key]) {
+          if (tipo === "followup") {
+            fresh.leads[key].followup_count = (fresh.leads[key].followup_count || 0) + 1;
+            fresh.leads[key].followup_em = new Date().toLocaleDateString("pt-BR");
+          } else {
+            if (fresh.leads[key].state === "na_fila") fresh.leads[key].state = "enviado";
+            fresh.leads[key].emitido = new Date().toLocaleDateString("pt-BR");
+            fresh.leads[key].msg_enviada = texto;
+          }
+          saveStatus(fresh);
         }
-        saveStatus(db);
 
         appendConversation(phone, "assistant", texto);
         daily.count++;
