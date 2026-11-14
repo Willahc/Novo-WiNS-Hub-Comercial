@@ -16,6 +16,70 @@ const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROSPECCAO_DIR = resolve(__dirname, "..", "prospeccao");
 const WEBDATA_DIR = resolve(__dirname, "..", "..", "webdata");
+const CEP_GEO_CACHE_PATH = resolve(__dirname, "..", "..", "data", "cep-geo-cache.json");
+let cepGeoCache = null;
+
+function getCepGeoCache() {
+  if (cepGeoCache) return cepGeoCache;
+  try {
+    cepGeoCache = existsSync(CEP_GEO_CACHE_PATH) ? JSON.parse(readFileSync(CEP_GEO_CACHE_PATH, "utf8")) : {};
+  } catch {
+    cepGeoCache = {};
+  }
+  return cepGeoCache;
+}
+
+async function enrichItemsWithCepGeo(items) {
+  const cache = getCepGeoCache();
+  const pendingCeps = [];
+  const seen = new Set();
+  for (const it of items) {
+    const cep = String(it.cep || "").replace(/\D/g, "");
+    if (cep.length !== 8) continue;
+    if (cache[cep]) {
+      it.latitude = cache[cep].lat;
+      it.longitude = cache[cep].lon;
+    } else if (!seen.has(cep) && pendingCeps.length < 30) {
+      seen.add(cep);
+      pendingCeps.push(cep);
+    }
+  }
+  if (!pendingCeps.length) return;
+
+  let dirty = false;
+  const workers = Array.from({ length: Math.min(6, pendingCeps.length) }, async () => {
+    while (pendingCeps.length) {
+      const cep = pendingCeps.shift();
+      if (!cep) break;
+      try {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 1600);
+        const r = await fetch(`https://brasilapi.com.br/api/cep/v2/${cep}`, { signal: ctrl.signal });
+        clearTimeout(t);
+        if (!r.ok) continue;
+        const j = await r.json();
+        const coords = j?.location?.coordinates;
+        const lat = Number(coords?.latitude);
+        const lon = Number(coords?.longitude);
+        if (Number.isFinite(lat) && Number.isFinite(lon) && lat !== 0 && lon !== 0) {
+          cache[cep] = { lat, lon };
+          dirty = true;
+        }
+      } catch {}
+    }
+  });
+  await Promise.all(workers);
+  if (dirty) {
+    try { writeFileSync(CEP_GEO_CACHE_PATH, JSON.stringify(cache)); } catch {}
+  }
+  for (const it of items) {
+    const cep = String(it.cep || "").replace(/\D/g, "");
+    if (cep.length === 8 && cache[cep]) {
+      it.latitude = cache[cep].lat;
+      it.longitude = cache[cep].lon;
+    }
+  }
+}
 const CRM_HTML_PATH = resolve(__dirname, "crm.html");
 
 const workerState = {
@@ -921,8 +985,24 @@ Formato obrigatório:
           };
           imported++;
         }
-        return { key, nome, cnpj: row.cnpj, telefone: normPhone, email: row.email || "", foraDoMaps, optanteMei: row.optante_mei === "S", score: scored.score };
+        return {
+          key,
+          nome,
+          cnpj: row.cnpj,
+          telefone: normPhone,
+          email: row.email || "",
+          endereco: row.endereco || "",
+          bairro: row.bairro || "",
+          cep: row.cep || "",
+          cnae: parsed.cnae,
+          cidade: parsed.municipio || cidade,
+          foraDoMaps,
+          optanteMei: row.optante_mei === "S",
+          score: scored.score,
+        };
       });
+
+      await enrichItemsWithCepGeo(items);
 
       if (imported > 0) saveStatus(db);
       pushLog(`🏢 CNAE SP (${parsed.cnae} · ${parsed.municipio}): ${items.length} encontrados, ${foraDoMapsCount} fora do Maps, ${imported} adicionados ao CRM`);

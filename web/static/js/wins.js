@@ -21,6 +21,7 @@
         geo: null,          // { lat, lon, label }
         jobs: [],
         counts: {},         // jobId -> nº de empresas
+        cnaeByJob: {},      // jobId -> empresas da Base CNAE SP
         selected: null,     // job selecionado
         places: [],
         selectedKeys: {},
@@ -302,7 +303,32 @@
                         .then(function (r) { return r.ok ? r.json() : null; })
                         .then(function (cRes) {
                             if (cRes && cRes.ok && cRes.total > 0) {
-                                toast('+' + cRes.total + ' empresas da Base CNAE SP (' + cRes.foraDoMapsCount + ' fora do Maps) enviadas ao CRM!');
+                                var mapped = (cRes.items || []).map(function (it) {
+                                    return {
+                                        title: it.nome,
+                                        category: 'CNAE ' + (it.cnae || cRes.cnae || ''),
+                                        borough: it.bairro || it.cidade || '',
+                                        address: it.endereco || '',
+                                        phone: it.telefone || '',
+                                        emails: it.email || '',
+                                        website: '',
+                                        latitude: Number(it.latitude) || 0,
+                                        longitude: Number(it.longitude) || 0,
+                                        foraDoMaps: !!it.foraDoMaps,
+                                        optanteMei: !!it.optanteMei,
+                                        cnpj: it.cnpj || '',
+                                        link: 'cnae://' + (it.cnpj || it.nome)
+                                    };
+                                });
+                                state.cnaeByJob[res.id] = mapped;
+                                if (state.selected && state.selected.ID === res.id) {
+                                    state.places = state.places.filter(function (p) { return !p.cnpj; }).concat(mapped);
+                                    addMarkers(mapped.filter(function (p) { return p.latitude && p.longitude; }));
+                                    renderLive();
+                                    renderJobs();
+                                    renderBoard();
+                                }
+                                toast('+' + cRes.total + ' empresas da Base CNAE SP (' + cRes.foraDoMapsCount + ' fora do Maps) no mapa e CRM!');
                             }
                         })
                         .catch(function () {});
@@ -381,7 +407,12 @@
                 if (sel && state.places.length) meta.push('<b>' + state.places.length + '</b> até agora');
             } else {
                 meta.push(st);
-                if (j.Status === 'ok' && typeof state.counts[j.ID] === 'number') meta.push('<b>' + state.counts[j.ID] + '</b> empresas');
+                var cnCount = (state.cnaeByJob[j.ID] || []).length;
+                if (j.Status === 'ok' && typeof state.counts[j.ID] === 'number') {
+                    meta.push('<b>' + state.counts[j.ID] + '</b> Maps' + (cnCount ? ' + <b>' + cnCount + '</b> CNAE SP' : ''));
+                } else if (cnCount) {
+                    meta.push('<b>' + cnCount + '</b> CNAE SP');
+                }
             }
             meta.push(dateBR(j.Date));
             if (j.Data && j.Data.email) meta.push('com e-mails');
@@ -464,9 +495,10 @@
         }
         if (p.website) links.push('<a href="' + esc(p.website) + '" target="_blank" rel="noopener">' + ICON.globe + esc(domain(p.website)) + '</a>');
         if (p.emails) links.push('<a href="mailto:' + esc(p.emails.split(',')[0]) + '">' + ICON.mail + esc(p.emails.split(',')[0]) + '</a>');
-        if (p.link) links.push('<a href="' + esc(p.link) + '" target="_blank" rel="noopener">' + ICON.pin + 'Abrir no Google Maps</a>');
+        if (p.link && p.link.indexOf('cnae://') !== 0) links.push('<a href="' + esc(p.link) + '" target="_blank" rel="noopener">' + ICON.pin + 'Abrir no Google Maps</a>');
         return '<div class="pop-title">' + esc(p.title) + '</div>' +
             '<div class="pop-cat">' + esc([p.category, p.borough].filter(Boolean).join(' · ')) + '</div>' +
+            (p.foraDoMaps ? '<div style="margin-top:6px"><span class="tag" style="background:rgba(56,189,248,.16);color:#38bdf8;border:1px solid rgba(56,189,248,.4)">📍 Fora do Maps (CNAE SP)</span></div>' : '') +
             (siteKind(p.website) === 'none' ? '<div style="margin-top:8px"><span class="tag dark">Sem site</span></div>' : '') +
             (p.review_rating ? '<div class="pop-rate">★ <b>' + rating(p.review_rating) + '</b> <span style="color:#8a8a8a">(' + int(p.review_count) + ' avaliações)</span></div>' : '') +
             (links.length ? '<div class="pop-links">' + links.join('') + '</div>' : '');
@@ -479,7 +511,7 @@
             if (markerByKey[key]) return;
             var out = c && distKm(c.lat, c.lon, p.latitude, p.longitude) > c.km;
             var m = L.marker([p.latitude, p.longitude], {
-                icon: L.divIcon({ className: '', html: '<div class="pin' + (out ? ' out' : '') + '"></div>', iconSize: [14, 14], iconAnchor: [7, 7] })
+                icon: L.divIcon({ className: '', html: '<div class="pin' + (p.cnpj ? ' cnae' : (out ? ' out' : '')) + '"></div>', iconSize: [14, 14], iconAnchor: [7, 7] })
             }).bindPopup(popupHtml(p), { closeButton: false, offset: [0, -4] });
             markers.addLayer(m);
             markerByKey[key] = m;
@@ -494,10 +526,12 @@
             .then(function (places) {
                 if (!state.selected || state.selected.ID !== job.ID) return;
                 // Durante a busca o CSV está sendo escrito: nunca regride a lista.
-                if (places.length < state.places.length) return;
-                state.places = places;
+                var prevMapsCount = state.places.filter(function (p) { return !p.cnpj; }).length;
+                if (places.length < prevMapsCount) return;
+                var cnaeExtras = state.cnaeByJob[job.ID] || [];
+                state.places = places.concat(cnaeExtras);
                 if (job.Status === 'ok') state.counts[job.ID] = places.length;
-                addMarkers(places);
+                addMarkers(state.places.filter(function (p) { return p.latitude && p.longitude; }));
                 if (fit && places.length && !jobCenter(job)) {
                     map.flyToBounds(L.latLngBounds(places.map(function (p) { return [p.latitude, p.longitude]; })), {
                         paddingTopLeft: panelOffset(), paddingBottomRight: [40, 40], duration: 0.8
@@ -515,11 +549,12 @@
         var running = job.Status === 'working' || job.Status === 'pending';
         $('livebar').hidden = state.view !== 'map';
         $('liveDot').className = 'live-dot' + (running ? ' run' : '');
-        var n = state.places.length;
+        var mapsN = state.places.filter(function (p) { return !p.cnpj; }).length;
+        var cnaeN = (state.cnaeByJob[job.ID] || []).length;
         $('liveText').innerHTML = running
-            ? (job.Status === 'pending' ? 'Na fila, já começa' : 'Buscando: <b>' + n + '</b> empresas até agora')
-            : '<b>' + n + '</b> empresas em ' + esc(job.Name);
-        $('liveDownload').hidden = running || !n;
+            ? (job.Status === 'pending' ? 'Na fila, já começa' : 'Buscando: <b>' + mapsN + '</b> Maps' + (cnaeN ? ' + <b>' + cnaeN + '</b> CNAE SP' : ''))
+            : '<b>' + mapsN + '</b> Maps' + (cnaeN ? ' + <b>' + cnaeN + '</b> CNAE SP' : '') + ' em ' + esc(job.Name);
+        $('liveDownload').hidden = running || !mapsN;
     }
 
     // ---------- Painel ----------
