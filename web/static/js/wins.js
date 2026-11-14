@@ -292,6 +292,21 @@
             .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.message || 'Erro'); return j; }); })
             .then(function (res) {
                 toast('Busca enviada. As empresas vão aparecendo no mapa.');
+                var cnaeAuto = ($('cnae') ? $('cnae').value : '').trim() || terms[0] || '';
+                if (cnaeAuto) {
+                    fetch('/api/crm/cnae-sp/search', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ cnae: cnaeAuto, cidade: loc || 'São Paulo', meiOnly: false, limit: state.qty || 60, importToCrm: true })
+                    })
+                        .then(function (r) { return r.ok ? r.json() : null; })
+                        .then(function (cRes) {
+                            if (cRes && cRes.ok && cRes.total > 0) {
+                                toast('+' + cRes.total + ' empresas da Base CNAE SP (' + cRes.foraDoMapsCount + ' fora do Maps) enviadas ao CRM!');
+                            }
+                        })
+                        .catch(function () {});
+                }
                 return loadJobs().then(function () {
                     var job = state.jobs.filter(function (j) { return j.ID === res.id; })[0];
                     if (job) selectJob(job);

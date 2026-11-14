@@ -53,21 +53,35 @@ def main():
 
         cnae_input = str(payload.get("cnae", "")).strip()
         cnae_raw = "".join(c for c in cnae_input if c.isdigit())
-        cidade_raw = str(payload.get("cidade", "São Paulo")).split(",")[0].split("-")[0].strip()
+        loc_raw = str(payload.get("cidade", "São Paulo")).strip() or "São Paulo"
+        loc_parts = [p.strip() for part in loc_raw.split(",") for p in part.split("-") if p.strip() and norm_text(p) not in ("SP", "SAO PAULO SP", "BRASIL", "BRAZIL")]
+        if not loc_parts:
+            loc_parts = ["São Paulo"]
         mei_only = bool(payload.get("meiOnly", True))
         limit = min(200, max(1, int(payload.get("limit", 60))))
 
-        mun_row = conn.execute(
-            "SELECT codigo, nome FROM municipios WHERE nome_norm = ? LIMIT 1",
-            (norm_text(cidade_raw),),
-        ).fetchone()
-        if not mun_row:
+        mun_row = None
+        for cand in loc_parts:
             mun_row = conn.execute(
-                "SELECT codigo, nome FROM municipios WHERE nome_norm LIKE ? LIMIT 1",
-                (f"%{norm_text(cidade_raw)}%",),
+                "SELECT codigo, nome FROM municipios WHERE nome_norm = ? LIMIT 1",
+                (norm_text(cand),),
             ).fetchone()
+            if mun_row:
+                break
         if not mun_row:
-            print(json.dumps({"ok": False, "error": f"Município '{cidade_raw}' não encontrado na base"}))
+            for cand in loc_parts:
+                if len(cand) < 4:
+                    continue
+                mun_row = conn.execute(
+                    "SELECT codigo, nome FROM municipios WHERE nome_norm LIKE ? LIMIT 1",
+                    (f"%{norm_text(cand)}%",),
+                ).fetchone()
+                if mun_row:
+                    break
+        if not mun_row and "SP" in norm_text(loc_raw).split():
+            mun_row = conn.execute("SELECT codigo, nome FROM municipios WHERE codigo = '7107' LIMIT 1").fetchone()
+        if not mun_row:
+            print(json.dumps({"ok": False, "error": f"Município '{loc_parts[0]}' não encontrado na base"}))
             return
 
         mun_cod = mun_row["codigo"]
