@@ -464,6 +464,16 @@ input[type=range]::-moz-range-thumb {
 
 .board-main { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .board-main[hidden] { display: none; }
+#board {
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: #334155 transparent;
+}
+#board::-webkit-scrollbar { width: 7px; }
+#board::-webkit-scrollbar-thumb { background: #334155; border-radius: 999px; }
+#board .board-empty { flex: none; padding: 34px 24px; }
+#board .board-main { flex: none; min-height: auto; }
+#board .table-wrap { max-height: 520px; overflow: auto; }
 
 .board-head {
     display: flex;
