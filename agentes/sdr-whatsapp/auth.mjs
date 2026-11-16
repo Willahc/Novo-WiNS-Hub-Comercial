@@ -153,8 +153,9 @@ function renderLoginHtml(errorMsg = "", nextUrl = "/") {
     html,body{margin:0;height:100%;font-family:"Geist",system-ui,sans-serif;background:#0f131c;color:#f3f4f6;-webkit-font-smoothing:antialiased}
     body{display:grid;place-items:center;padding:20px;background:radial-gradient(circle at 20% 20%,rgba(61,69,86,.22),transparent 55%),radial-gradient(circle at 80% 80%,rgba(59,130,246,.08),transparent 55%),#0f131c}
     .card{width:100%;max-width:400px;background:linear-gradient(155deg,#2b313d 0%,#1d222b 60%,#252b36 100%);border:1px solid #3d4556;border-radius:16px;padding:30px 26px;box-shadow:inset 0 1px 0 rgba(255,255,255,.09),0 20px 50px rgba(0,0,0,.5)}
-    .brand{font-family:"Space Grotesk",system-ui,sans-serif;font-size:22px;font-weight:700;letter-spacing:-.025em;background:linear-gradient(180deg,#fff 0%,#cbd5e1 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin:0 0 6px}
-    .sub{font-size:13px;color:#9ca3af;margin:0 0 24px}
+    .logo-wrap{display:flex;justify-content:center;margin:0 0 12px}
+    .logo{max-width:260px;width:100%;height:auto;display:block;filter:drop-shadow(0 4px 14px rgba(0,0,0,.45))}
+    .sub{font-size:13px;color:#9ca3af;margin:0 0 24px;text-align:center}
     label{display:block;font-size:12px;font-weight:500;color:#cbd5e1;margin-bottom:6px}
     .inp-wrap{position:relative;margin-bottom:16px}
     input{width:100%;height:44px;border-radius:10px;border:1px solid #3d4556;background:#131720;color:#f3f4f6;padding:0 13px;font-size:15px;outline:none;transition:border-color .15s}
@@ -169,7 +170,9 @@ function renderLoginHtml(errorMsg = "", nextUrl = "/") {
 </head>
 <body>
   <main class="card">
-    <h1 class="brand">WiNS Hub Comercial</h1>
+    <div class="logo-wrap">
+      <img src="/static/img/wins-logo.png" alt="WiNS Hub · Inteligência Comercial" class="logo">
+    </div>
     <p class="sub">Acesse seu painel de prospecção e CRM</p>
     ${errHtml}
     <form method="POST" action="/login">
@@ -225,7 +228,7 @@ export async function handleAuthRequest(req, res) {
     return true;
   }
 
-  if (req.method === "GET" && pathname === "/login") {
+  if ((req.method === "GET" || req.method === "HEAD") && pathname === "/login") {
     const nextUrl = safeNext(urlObj.searchParams.get("next") || "/");
     const cookies = parseCookies(req);
     if (verifyToken(cookies[COOKIE_NAME])) {
@@ -234,7 +237,7 @@ export async function handleAuthRequest(req, res) {
       return true;
     }
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
-    res.end(renderLoginHtml("", nextUrl));
+    res.end(req.method === "HEAD" ? "" : renderLoginHtml("", nextUrl));
     return true;
   }
 
@@ -290,3 +293,4 @@ export async function handleAuthRequest(req, res) {
 
   return false;
 }
+
