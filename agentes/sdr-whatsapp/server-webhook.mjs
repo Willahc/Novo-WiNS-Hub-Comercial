@@ -79,7 +79,6 @@ async function handleIncoming(incoming) {
   // Conversas pessoais ou clientes antigos no mesmo WhatsApp Business são 100% ignorados pela IA.
   if (!match) {
     console.log(`[IGNORADO] Mensagem de ${incoming.phone} não está em status.json.`);
-    logActivity("SDR", `⏭️ Ignorado ${incoming.phone} (não está na fila)`);
     return;
   }
 
