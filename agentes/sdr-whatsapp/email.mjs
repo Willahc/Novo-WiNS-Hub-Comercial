@@ -1,4 +1,5 @@
 // email.mjs — Envio SMTP (Hostinger) + Cold Email Cirúrgico + Cadência D+0 / D+3 / D+7
+import tls from "node:tls";
 import nodemailer from "nodemailer";
 import { callClaude, logActivity } from "./lib.mjs";
 import { auditSite } from "../prospeccao/site-audit.mjs";
@@ -23,19 +24,78 @@ export async function verifySmtp() {
   return { ok: true, host: process.env.SMTP_HOST || "smtp.hostinger.com", user: process.env.SMTP_USER };
 }
 
+function appendToImapSent(rawBuffer) {
+  const host = process.env.IMAP_HOST || "imap.hostinger.com";
+  const port = Number(process.env.IMAP_PORT || 993);
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
+  const mailbox = process.env.IMAP_SENT_FOLDER || "INBOX.Sent";
+  if (!user || !pass || !rawBuffer) return Promise.resolve(false);
+
+  return new Promise((resolve) => {
+    let step = 0;
+    let buf = "";
+    let done = false;
+    const finish = (ok) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      try { sock.end(); } catch {}
+      resolve(ok);
+    };
+    const timer = setTimeout(() => finish(false), 6000);
+    const sock = tls.connect(port, host);
+    sock.on("error", () => finish(false));
+    sock.on("data", (chunk) => {
+      buf += chunk.toString("utf8");
+      if (step === 0 && buf.includes("* OK")) {
+        buf = "";
+        step = 1;
+        sock.write(`a1 LOGIN "${user.replace(/"/g, '\\"')}" "${pass.replace(/"/g, '\\"')}"\r\n`);
+      } else if (step === 1 && buf.includes("a1 OK")) {
+        buf = "";
+        step = 2;
+        sock.write(`a2 APPEND "${mailbox}" (\\Seen) {${rawBuffer.length}}\r\n`);
+      } else if (step === 2 && buf.includes("+")) {
+        buf = "";
+        step = 3;
+        sock.write(rawBuffer);
+        sock.write("\r\n");
+      } else if (step === 3 && buf.includes("a2 OK")) {
+        step = 4;
+        sock.write("a3 LOGOUT\r\n");
+        finish(true);
+      } else if (/^a\d+ (NO|BAD)/m.test(buf)) {
+        finish(false);
+      }
+    });
+  });
+}
+
 export async function sendMail({ to, subject, text, html, replyTo }) {
   const fromName = process.env.SMTP_FROM_NAME || "William · WiNS Hub Comercial";
   const fromEmail = process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER;
-  const transporter = getTransporter();
-  const info = await transporter.sendMail({
+  const mailOptions = {
     from: `"${fromName}" <${fromEmail}>`,
     to,
     replyTo: replyTo || fromEmail,
     subject,
     text,
     html: html || text.replace(/\n/g, "<br>"),
-  });
-  return { messageId: info.messageId, accepted: info.accepted || [] };
+  };
+  const transporter = getTransporter();
+  const info = await transporter.sendMail(mailOptions);
+
+  // Grava cópia na pasta Enviados (INBOX.Sent) via IMAP
+  let savedToSent = false;
+  try {
+    const rawInfo = await nodemailer
+      .createTransport({ streamTransport: true, newline: "windows", buffer: true })
+      .sendMail({ ...mailOptions, messageId: info.messageId });
+    savedToSent = await appendToImapSent(rawInfo.message);
+  } catch {}
+
+  return { messageId: info.messageId, accepted: info.accepted || [], savedToSent };
 }
 
 function summarizeAuditForEmail(lead) {
