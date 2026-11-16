@@ -739,11 +739,11 @@ function startWorkerDispatch({ keys = [], dryRun = false, forceHorario = true } 
       const allEntries = Object.entries(db.leads || {});
       const counts = { na_fila: 0, enviado: 0, respondeu: 0, proposto: 0, fechado: 0, descartado: 0 };
       for (const [, l] of allEntries) counts[l.state] = (counts[l.state] || 0) + 1;
-      const filaList = allEntries
-        .filter(([, l]) => l.state === "na_fila")
+      const topOpportunities = allEntries
+        .filter(([, l]) => l.state === "na_fila" || l.state === "mapeado")
         .sort((a, b) => (b[1].score || 0) - (a[1].score || 0))
-        .slice(0, 15)
-        .map(([, l]) => `#${l.id} ${l.nome} (${l.nicho}, ${l.cidade}, ${l.temSite ? "com site" : "sem site"}${l.instagram ? ", " + l.instagram : ""})`)
+        .slice(0, 22)
+        .map(([, l]) => `#${l.id} [${l.state}|score:${l.score || 0}] ${l.nome} (${l.nicho}, ${l.cidade}, ${l.temSite ? "com site" : "sem site"}${l.telefone ? ", WA" : ""}${l.email ? ", Email" : ""}${l.foraDoMaps ? ", Fora do Maps" : ""})`)
         .join("\n");
 
       const jobsList = await fetch("http://127.0.0.1:8080/api/v1/jobs")
@@ -763,7 +763,7 @@ ESTADO AO VIVO:
 - CRM: na_fila=${counts.na_fila}, enviado=${counts.enviado}, respondeu=${counts.respondeu}, proposto=${counts.proposto}, fechado=${counts.fechado}, descartado=${counts.descartado}
 - E-mail: ${withEmailCount} leads com e-mail, ${dueFollowupsCount} follow-ups D+3/D+7 vencidos
 - Buscas no Painel:\n${jobsList || "(nenhuma)"}
-- Próximos leads na fila (top 15):\n${filaList || "(fila vazia)"}
+- Melhores oportunidades (na_fila + mapeado, top 22 por score):\n${topOpportunities || "(nenhuma)"}
 
 AÇÕES DISPONÍVEIS:
 1. {"type":"search_maps","query":"termo de busca","location":"bairro/cidade","maxResults":60} — cria uma nova busca no Google Maps (use maxResults 20, 60 ou 120; padrão 60).
@@ -782,10 +782,19 @@ Formato obrigatório:
         ...history.map((m) => ({ role: m.role === "assistant" ? "assistant" : "user", content: String(m.content || "") })),
         { role: "user", content: message },
       ];
-      const raw = await callClaude({ system: sys, messages: msgs, maxTokens: 420 });
+      const raw = await callClaude({ system: sys, messages: msgs, maxTokens: 1400 });
       const s = raw.indexOf("{");
       const e = raw.lastIndexOf("}");
-      const parsed = JSON.parse(raw.slice(s, e + 1));
+      let parsed = null;
+      if (s >= 0 && e > s) {
+        try {
+          parsed = JSON.parse(raw.slice(s, e + 1));
+        } catch {}
+      }
+      if (!parsed) {
+        const cleanReply = raw.replace(/^\s*\{\s*"reply"\s*:\s*"/, "").replace(/"\s*,?\s*"action"[\s\S]*$/, "").replace(/\\n/g, "\n").trim();
+        parsed = { reply: cleanReply || raw.trim() || "Não consegui formatar a resposta.", action: null };
+      }
       let reply = String(parsed.reply || "Feito.");
       const act = parsed.action || null;
       let executed = null;
