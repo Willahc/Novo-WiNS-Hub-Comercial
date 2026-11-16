@@ -23,6 +23,68 @@ def stem_pt(token: str) -> str:
     return token
 
 
+CNAE_SYNONYMS = {
+    "ZOOTECNIST": ["7490103", "0162803", "7500100"],
+    "AGRONOM": ["7490103"],
+    "DENTIST": ["ODONTOLOG"],
+    "ADVOGAD": ["6911701", "ADVOCACIA"],
+    "CONTADOR": ["6920601", "CONTABILIDADE"],
+    "BARBEIR": ["9602501", "CABELEIREIROS"],
+    "BARBEARI": ["9602501", "CABELEIREIROS"],
+    "ADEG": ["4723700"],
+    "TABACARI": ["4729601"],
+    "MECANIC": ["4520001", "MANUTENCAO REPARACAO VEICULOS"],
+    "OFICIN": ["4520001"],
+    "CONCESSIONARI": ["4511101", "4511102"],
+    "ESTETICIST": ["9602502"],
+    "ESTETIC": ["9602502"],
+    "PSICOLOG": ["8650003"],
+    "NUTRICIONIST": ["8650002"],
+    "FISIOTERAPEUT": ["8650004"],
+    "ACADEMI": ["9313100"],
+    "PETSHOP": ["4789004", "9609208"],
+    "PET": ["4789004", "9609208", "7500100"],
+    "PADARI": ["4721102", "1091102"],
+    "MARMITARI": ["5620104"],
+    "ELETRICIST": ["4321500"],
+    "ENCANADOR": ["4322301"],
+    "ARQUITET": ["7111100"],
+    "ENGENHEIR": ["7112000"],
+}
+
+
+def resolve_cnae_codes(conn: sqlite3.Connection, cnae_input: str) -> list[str]:
+    kw = norm_text(cnae_input)
+    tokens = [stem_pt(t) for t in kw.split() if len(t) >= 3] or [stem_pt(kw)]
+    all_cnaes = [(r["codigo"], norm_text(r["descricao"])) for r in conn.execute("SELECT codigo, descricao FROM cnaes").fetchall()]
+
+    matched = [cod for cod, desc in all_cnaes if all(t in desc for t in tokens)]
+    if matched:
+        return matched[:20]
+
+    syn_codes = []
+    for t in tokens:
+        for key, targets in CNAE_SYNONYMS.items():
+            if t == key or t.startswith(key) or key.startswith(t):
+                for tgt in targets:
+                    if tgt.isdigit() and len(tgt) == 7:
+                        if tgt not in syn_codes:
+                            syn_codes.append(tgt)
+                    else:
+                        sub_tokens = tgt.split()
+                        for cod, desc in all_cnaes:
+                            if all(st in desc for st in sub_tokens) and cod not in syn_codes:
+                                syn_codes.append(cod)
+    if syn_codes:
+        return syn_codes[:20]
+
+    # Fallback: prefixo de 6 letras para termos longos sem match exato
+    long_tokens = [t[:6] for t in tokens if len(t) >= 7]
+    if long_tokens:
+        return [cod for cod, desc in all_cnaes if all(lt in desc for lt in long_tokens)][:20]
+    return []
+
+
 def main():
     cmd = sys.argv[1] if len(sys.argv) > 1 else "status"
     if not DB_PATH.exists():
@@ -101,15 +163,7 @@ def main():
             where.append("cnae_principal LIKE ?")
             params.append(f"{cnae_raw}%")
         elif cnae_input:
-            kw = norm_text(cnae_input)
-            tokens = [stem_pt(t) for t in kw.split() if len(t) >= 3]
-            if not tokens:
-                tokens = [stem_pt(kw)]
-            matched_codes = [
-                r["codigo"]
-                for r in conn.execute("SELECT codigo, descricao FROM cnaes").fetchall()
-                if all(t in norm_text(r["descricao"]) for t in tokens)
-            ][:20]
+            matched_codes = resolve_cnae_codes(conn, cnae_input)
             if not matched_codes:
                 print(json.dumps({"ok": False, "error": f"Nenhum CNAE encontrado para '{cnae_input}'"}))
                 return
