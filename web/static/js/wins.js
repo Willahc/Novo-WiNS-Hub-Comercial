@@ -555,6 +555,81 @@
             ? (job.Status === 'pending' ? 'Na fila, já começa' : 'Buscando: <b>' + mapsN + '</b> Maps' + (cnaeN ? ' + <b>' + cnaeN + '</b> CNAE SP' : ''))
             : '<b>' + mapsN + '</b> Maps' + (cnaeN ? ' + <b>' + cnaeN + '</b> CNAE SP' : '') + ' em ' + esc(job.Name);
         $('liveDownload').hidden = running || !mapsN;
+        renderMapResults();
+    }
+
+    function renderMapResults() {
+        var panel = $('mapResultsPanel');
+        if (!panel) return;
+        if (state.view !== 'map' || !state.selected) {
+            panel.hidden = true;
+            return;
+        }
+        panel.hidden = false;
+        var listEl = $('mapResultsList');
+        var q = ($('mapResultsFilter') ? $('mapResultsFilter').value : '').trim().toLowerCase();
+        var items = state.places.filter(function (p) {
+            if (!q) return true;
+            return ((p.title || '') + ' ' + (p.borough || '') + ' ' + (p.category || '') + ' ' + (p.phone || '') + ' ' + (p.emails || '')).toLowerCase().indexOf(q) >= 0;
+        });
+        var mapsN = state.places.filter(function (p) { return !p.cnpj; }).length;
+        var cnaeN = state.places.filter(function (p) { return !!p.cnpj; }).length;
+        if ($('mapResultsTitle')) $('mapResultsTitle').textContent = state.selected.Name || 'Resultados';
+        if ($('mapResultsSub')) {
+            $('mapResultsSub').textContent = mapsN + ' Maps' + (cnaeN ? ' + ' + cnaeN + ' CNAE SP' : '') + ' · clique para centralizar';
+        }
+        renderMapResults.items = items;
+        if (!items.length) {
+            listEl.innerHTML = '<div class="t-cat" style="padding:12px">Nenhum estabelecimento encontrado.</div>';
+            return;
+        }
+        listEl.innerHTML = items.map(function (p, i) {
+            var key = placeKey(p);
+            var sel = state.selectedMapKey === key;
+            var wa = whatsapp(p.phone);
+            var tags = [];
+            if (p.foraDoMaps) tags.push('<span class="tag" style="background:rgba(56,189,248,.16);color:#38bdf8">Fora do Maps</span>');
+            if (p.optanteMei) tags.push('<span class="tag" style="background:rgba(34,197,94,.16);color:#4ade80">MEI</span>');
+            if (!p.website) tags.push('<span class="tag dark">Sem site</span>');
+            if (wa) tags.push('<span class="t-cat">📱 ' + esc(p.phone) + '</span>');
+            else if (p.phone) tags.push('<span class="t-cat">☎️ ' + esc(p.phone) + '</span>');
+            return '<div class="map-res-item' + (sel ? ' is-selected' : '') + '" data-i="' + i + '">' +
+                '<div class="map-res-name">' + esc(p.title || 'Sem nome') + '</div>' +
+                '<div class="map-res-meta">' + esc([p.borough || p.address, p.category].filter(Boolean).join(' · ')) + '</div>' +
+                (tags.length ? '<div class="map-res-tags">' + tags.join('') + '</div>' : '') +
+                '</div>';
+        }).join('');
+    }
+
+    if ($('mapResultsFilter')) {
+        $('mapResultsFilter').addEventListener('input', renderMapResults);
+    }
+    if ($('mapResultsToggle')) {
+        $('mapResultsToggle').addEventListener('click', function () {
+            var p = $('mapResultsPanel');
+            if (!p) return;
+            var collapsed = p.classList.toggle('is-collapsed');
+            this.textContent = collapsed ? 'Mostrar' : 'Ocultar';
+        });
+    }
+    if ($('mapResultsList')) {
+        $('mapResultsList').addEventListener('click', function (e) {
+            var item = e.target.closest('.map-res-item[data-i]');
+            if (!item) return;
+            var p = (renderMapResults.items || [])[Number(item.getAttribute('data-i'))];
+            if (!p) return;
+            state.selectedMapKey = placeKey(p);
+            renderMapResults();
+            var m = markerByKey[state.selectedMapKey];
+            if (m) {
+                map.flyTo(m.getLatLng(), 16, { duration: 0.6 });
+                setTimeout(function () { m.openPopup(); }, 650);
+            } else if (p.latitude && p.longitude) {
+                map.flyTo([p.latitude, p.longitude], 16, { duration: 0.6 });
+            } else {
+                toast('Este registro CNAE ainda não possui coordenadas de CEP para centralizar.');
+            }
+        });
     }
 
     // ---------- Painel ----------
