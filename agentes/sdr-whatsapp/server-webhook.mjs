@@ -94,6 +94,16 @@ async function handleIncoming(incoming) {
     saveStatus(db);
   }
 
+  const emailMatch = String(incoming.text || "").match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/);
+  if (emailMatch) {
+    const capturedEmail = emailMatch[0].toLowerCase();
+    if (db.leads[key].email !== capturedEmail) {
+      db.leads[key].email = capturedEmail;
+      saveStatus(db);
+      logActivity("SDR", `✉️ E-mail capturado no WhatsApp (${lead.nome}): ${capturedEmail}`);
+    }
+  }
+
   const history = appendConversation(incoming.phone, "user", incoming.text);
   logActivity("SDR", `📩 ${lead.nome}: "${incoming.text.slice(0, 70).replace(/\s+/g, " ")}"`);
   const claudeMessages = history.map((m) => ({

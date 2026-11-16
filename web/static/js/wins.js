@@ -1224,7 +1224,38 @@
                         toast('Proposta gerada e copiada!');
                     })
                     .catch(function () { toast('Erro ao gerar proposta'); })
-                    .finally(function () { btn.disabled = false; btn.textContent = 'Gerar Proposta (Closer)'; });
+                    .finally(function () { btn.disabled = false; btn.textContent = 'Proposta IA'; });
+            });
+        }
+
+        if ($('crmSendEmailOne')) {
+            $('crmSendEmailOne').addEventListener('click', function () {
+                if (!crmState.activeKey) return;
+                var leadObj = ((crmState.data && crmState.data.leads) || []).find(function (x) { return x.key === crmState.activeKey; });
+                var curEmail = leadObj && leadObj.email ? leadObj.email : '';
+                var toEmail = window.prompt('Enviar e-mail comercial para (' + (leadObj ? leadObj.nome : 'lead') + '):', curEmail);
+                if (!toEmail || toEmail.indexOf('@') < 1) return;
+                var btn = this;
+                btn.disabled = true;
+                btn.textContent = 'Enviando...';
+                fetch('/api/crm/email/send', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ key: crmState.activeKey, email: toEmail.trim() })
+                })
+                    .then(function (r) { return r.json(); })
+                    .then(function (res) {
+                        if (!res.ok || !res.sent) {
+                            var err = (res.results && res.results[0] && res.results[0].error) || res.error || 'falha no envio';
+                            toast('Erro ao enviar e-mail: ' + err);
+                            return;
+                        }
+                        var subj = (res.results && res.results[0] && res.results[0].subject) || '';
+                        toast('E-mail enviado para ' + toEmail.trim() + (subj ? ' · "' + subj + '"' : ''));
+                        loadCrm();
+                    })
+                    .catch(function () { toast('Erro ao enviar e-mail'); })
+                    .finally(function () { btn.disabled = false; btn.textContent = 'Enviar E-mail'; });
             });
         }
 

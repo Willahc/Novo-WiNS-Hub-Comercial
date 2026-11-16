@@ -1035,7 +1035,16 @@ Formato obrigatório:
       const body = await readJsonBody(req);
       const db = loadStatus();
       let targets = [];
-      if (Array.isArray(body.leads) && body.leads.length) {
+      if (body.key && db.leads?.[body.key]) {
+        if (body.email && String(body.email).includes("@")) {
+          db.leads[body.key].email = String(body.email).trim().toLowerCase();
+          saveStatus(db);
+        }
+        const l = db.leads[body.key];
+        if (l.email && String(l.email).includes("@")) {
+          targets = [[body.key, l]];
+        }
+      } else if (Array.isArray(body.leads) && body.leads.length) {
         const keys = materializeLeads(db, body.leads, "na_fila");
         targets = keys.map((k) => [k, db.leads[k]]).filter(([, l]) => l && l.email && String(l.email).includes("@"));
       } else {
