@@ -768,12 +768,13 @@ ESTADO AO VIVO:
 AÇÕES DISPONÍVEIS:
 1. {"type":"search_maps","query":"termo de busca","location":"bairro/cidade","maxResults":60} — cria uma nova busca no Google Maps (use maxResults 20, 60 ou 120; padrão 60).
 2. {"type":"audit_batch","limit":5} — audita até N sites de leads no CRM que ainda não foram auditados.
-3. {"type":"start_dispatch","limit":5,"ids":[1039,1040],"dryRun":false} — inicia disparo real no WhatsApp para os IDs citados ou os primeiros "limit" da fila (use dryRun:true só se o usuário pedir simulação/teste).
-4. {"type":"stop_dispatch"} — para o disparo em andamento.
-5. {"type":"send_email","limit":5,"ids":[1039],"dryRun":false} — envia cold e-mail personalizado (via contato@winshubcomercial.com.br) para os IDs citados ou os primeiros "limit" leads com e-mail.
-6. {"type":"run_email_cadence","limit":10,"dryRun":false} — envia os follow-ups de e-mail D+3 e D+7 que estão vencidos.
-7. {"type":"switch_view","view":"map"|"dash"|"crm"} — abre uma aba da ferramenta (dash = Dashboard, crm = Central de Prospecção).
-8. null — apenas responder pergunta sem executar ação.
+3. {"type":"queue_leads","ids":[1039,1040],"limit":18} — move os IDs citados (ou os top "limit" leads mapeados por score) para a fila (na_fila) para revisão/simulação.
+4. {"type":"start_dispatch","limit":5,"ids":[1039,1040],"dryRun":false} — inicia disparo (ou simulação com dryRun:true) no WhatsApp para os IDs citados (se estiverem em mapeado, move automaticamente para na_fila) ou os primeiros "limit" da fila.
+5. {"type":"stop_dispatch"} — para o disparo em andamento.
+6. {"type":"send_email","limit":5,"ids":[1039],"dryRun":false} — envia cold e-mail personalizado (via contato@winshubcomercial.com.br) para os IDs citados ou os primeiros "limit" leads com e-mail.
+7. {"type":"run_email_cadence","limit":10,"dryRun":false} — envia os follow-ups de e-mail D+3 e D+7 que estão vencidos.
+8. {"type":"switch_view","view":"map"|"dash"|"crm"} — abre uma aba da ferramenta (dash = Dashboard, crm = Central de Prospecção).
+9. null — apenas responder pergunta sem executar ação.
 
 Formato obrigatório:
 {"reply":"resposta curta para o William","action":null ou objeto}`;
@@ -847,21 +848,73 @@ Formato obrigatório:
         saveStatus(db);
         executed = { type: "audit_batch", count: targets.length };
         pushLog(`[Assistente] ${targets.length} sites auditados.`);
-      } else if (act?.type === "start_dispatch") {
-        let keys = [];
+      } else if (act?.type === "queue_leads") {
+        let targets = [];
         if (Array.isArray(act.ids) && act.ids.length) {
           const want = new Set(act.ids.map(Number));
-          keys = allEntries.filter(([, l]) => want.has(l.id) && l.state === "na_fila").map(([k]) => k);
+          targets = allEntries.filter(([, l]) => want.has(l.id) && (l.state === "mapeado" || l.state === "na_fila"));
+        } else {
+          const lim = Math.min(30, Math.max(1, Number(act.limit) || 18));
+          targets = allEntries
+            .filter(([, l]) => l.state === "mapeado" && (l.telefone || l.email))
+            .sort((a, b) => (b[1].score || 0) - (a[1].score || 0))
+            .slice(0, lim);
+        }
+        let moved = 0;
+        for (const [k, l] of targets) {
+          if (l.state !== "na_fila") {
+            db.leads[k].state = "na_fila";
+            moved++;
+          }
+        }
+        if (moved > 0) saveStatus(db);
+        executed = { type: "queue_leads", count: targets.length, moved };
+        pushLog(`[Assistente] ${targets.length} leads colocados na fila (${moved} movidos de mapeado → na_fila).`);
+        if (targets.length) {
+          reply = `${targets.length} leads prontos na fila (${moved} adicionados agora). Pode pedir para simular ou clicar em Simular/Start no CRM!`;
+        } else {
+          reply = "Não encontrei leads disponíveis com contato para colocar na fila.";
+        }
+      } else if (act?.type === "start_dispatch") {
+        let keys = [];
+        let moved = 0;
+        if (Array.isArray(act.ids) && act.ids.length) {
+          const want = new Set(act.ids.map(Number));
+          const matched = allEntries.filter(([, l]) => want.has(l.id) && (l.state === "na_fila" || l.state === "mapeado"));
+          for (const [k, l] of matched) {
+            if (l.state === "mapeado") {
+              db.leads[k].state = "na_fila";
+              moved++;
+            }
+            keys.push(k);
+          }
         } else {
           const lim = Math.min(18, Math.max(1, Number(act.limit) || 5));
           keys = allEntries.filter(([, l]) => l.state === "na_fila").slice(0, lim).map(([k]) => k);
+          if (!keys.length && act.dryRun) {
+            const topMapped = allEntries
+              .filter(([, l]) => l.state === "mapeado" && l.telefone)
+              .sort((a, b) => (b[1].score || 0) - (a[1].score || 0))
+              .slice(0, lim);
+            for (const [k] of topMapped) {
+              db.leads[k].state = "na_fila";
+              moved++;
+              keys.push(k);
+            }
+          }
         }
+        if (moved > 0) saveStatus(db);
         if (!keys.length) {
-          reply = "Não encontrei leads na fila para disparar.";
+          reply = "Não encontrei leads na fila (nem mapeados com WhatsApp) para simular ou disparar.";
         } else {
           const started = startWorkerDispatch({ keys, dryRun: !!act.dryRun, forceHorario: true });
           if (!started.ok) reply = started.error;
-          else executed = { type: "start_dispatch", count: keys.length };
+          else {
+            executed = { type: "start_dispatch", count: keys.length, dryRun: !!act.dryRun };
+            if (act.dryRun) {
+              reply = `Simulação iniciada para ${keys.length} leads${moved ? ` (${moved} movidos para a fila)` : ""}. Acompanhe o resultado em LOGS AO VIVO!`;
+            }
+          }
         }
       } else if (act?.type === "stop_dispatch") {
         if (workerState.running && workerState.proc) {
