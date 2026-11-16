@@ -956,7 +956,22 @@
 
     // ---------- CRM Nativo ----------
 
-    var crmState = { data: null, filter: 'all', selectedKeys: {} };
+    var crmState = { data: null, filter: 'all', selectedKeys: {}, sortKey: null, sortDir: 'asc' };
+
+    function crmSortVal(l, key) {
+        if (key === 'score') return Number(l.score) || 0;
+        if (key === 'nome') return (l.nome || '').toLowerCase();
+        if (key === 'nicho') return ((l.nicho || '') + ' ' + (l.cidade || '')).toLowerCase();
+        if (key === 'contatos') return (l.telefone ? '2_' : (l.email ? '1_' : '0_')) + (l.telefone || l.email || '');
+        if (key === 'site') {
+            var k = siteKind(l.site);
+            return (k === 'none' ? '0_' : (k === 'social' ? '1_' : '2_')) + (l.site || '').toLowerCase();
+        }
+        if (key === 'state' || key === 'status') return (l.state || '').toLowerCase();
+        if (key === 'conversa') return Number(l.msgCount || 0);
+        if (key === 'previa') return l.previewUrl ? 1 : 0;
+        return '';
+    }
 
     function selectedCrmKeys() {
         return Object.keys(crmState.selectedKeys).filter(function (k) { return !!crmState.selectedKeys[k]; });
@@ -1032,6 +1047,16 @@
             b.textContent = (ST_LABELS[st] || st) + ' (' + cnt + ')';
         });
 
+        if ($('crmSortHead')) {
+            Array.prototype.forEach.call($('crmSortHead').querySelectorAll('th[data-crm-sort]'), function (th) {
+                var k = th.getAttribute('data-crm-sort');
+                var active = crmState.sortKey === k;
+                th.classList.toggle('active', active);
+                var ind = th.querySelector('.sort-ind');
+                if (ind) ind.textContent = active ? (crmState.sortDir === 'asc' ? '▲' : '▼') : '⇅';
+            });
+        }
+
         var q = ($('crmSearch').value || '').trim().toLowerCase();
         var opp = $('crmOppFilter') ? $('crmOppFilter').value : 'all';
         var list = (d.leads || []).filter(function (l) {
@@ -1044,6 +1069,17 @@
             if (q && (l.nome + ' ' + l.nicho + ' ' + l.cidade + ' ' + (l.email || '')).toLowerCase().indexOf(q) < 0) return false;
             return true;
         });
+
+        if (crmState.sortKey) {
+            var sk = crmState.sortKey;
+            var sdir = crmState.sortDir === 'asc' ? 1 : -1;
+            list.sort(function (a, b) {
+                var va = crmSortVal(a, sk);
+                var vb = crmSortVal(b, sk);
+                if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * sdir;
+                return String(va).localeCompare(String(vb), 'pt-BR', { numeric: true }) * sdir;
+            });
+        }
 
         var pickedCount = selectedCrmKeys().length;
         $('crmStart').textContent = pickedCount ? 'Start WhatsApp (' + pickedCount + ')' : 'Start WhatsApp';
@@ -1178,6 +1214,21 @@
                     if (on) crmState.selectedKeys[l.key] = true;
                     else delete crmState.selectedKeys[l.key];
                 });
+                renderCrm();
+            });
+        }
+
+        if ($('crmSortHead')) {
+            $('crmSortHead').addEventListener('click', function (e) {
+                var th = e.target.closest('th[data-crm-sort]');
+                if (!th) return;
+                var key = th.getAttribute('data-crm-sort');
+                if (crmState.sortKey === key) {
+                    crmState.sortDir = crmState.sortDir === 'asc' ? 'desc' : 'asc';
+                } else {
+                    crmState.sortKey = key;
+                    crmState.sortDir = (key === 'score' || key === 'conversa' || key === 'previa') ? 'desc' : 'asc';
+                }
                 renderCrm();
             });
         }

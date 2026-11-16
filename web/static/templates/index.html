@@ -252,17 +252,17 @@
             <div class="table-wrap">
                 <table>
                     <thead>
-                        <tr>
+                        <tr id="crmSortHead">
                             <th class="chk-col"><input type="checkbox" id="crmSelectAll" title="Selecionar todos visíveis"></th>
-                            <th class="num">Score</th>
-                            <th>Empresa &amp; Oportunidade</th>
-                            <th>Nicho / Cidade</th>
-                            <th>Contatos</th>
-                            <th>Site</th>
-                            <th>Etapa</th>
-                            <th>Conversa</th>
-                            <th>Prévia</th>
-                            <th>Status</th>
+                            <th class="num sortable" data-crm-sort="score">Score <span class="sort-ind">⇅</span></th>
+                            <th class="sortable" data-crm-sort="nome">Empresa &amp; Oportunidade <span class="sort-ind">⇅</span></th>
+                            <th class="sortable" data-crm-sort="nicho">Nicho / Cidade <span class="sort-ind">⇅</span></th>
+                            <th class="sortable" data-crm-sort="contatos">Contatos <span class="sort-ind">⇅</span></th>
+                            <th class="sortable" data-crm-sort="site">Site <span class="sort-ind">⇅</span></th>
+                            <th class="sortable" data-crm-sort="state">Etapa <span class="sort-ind">⇅</span></th>
+                            <th class="sortable" data-crm-sort="conversa">Conversa <span class="sort-ind">⇅</span></th>
+                            <th class="sortable" data-crm-sort="previa">Prévia <span class="sort-ind">⇅</span></th>
+                            <th class="sortable" data-crm-sort="status">Status <span class="sort-ind">⇅</span></th>
                         </tr>
                     </thead>
                     <tbody id="crmRows"></tbody>
@@ -341,6 +341,6 @@
     <div class="toast" id="toast"></div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-    <script src="/static/js/wins.js?v=20261116b"></script>
+    <script src="/static/js/wins.js?v=20261116c"></script>
 </body>
 </html>
