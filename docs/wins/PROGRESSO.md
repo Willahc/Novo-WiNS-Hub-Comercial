@@ -1,6 +1,6 @@
 # WiNS Hub Comercial — estado do projeto
 
-Última atualização: 13/11/2026
+Última atualização: 17/11/2026
 
 Este é o fork do `google-maps-scraper` publicado como serviço unificado em
 **https://winshubcomercial.com.br**. O documento resume onde a aplicação roda,
@@ -81,6 +81,9 @@ Detalhes de operação (logs, backup, restauração, HTTPS): `deploy/README.md`.
   - `Dashboard` dedicado com KPIs, Funil de Conversão, Top Nichos e **Matriz de Oportunidades** clicável (sem tabela duplicada).
   - `CRM` como central única: carrega toda a base scrapada em `Todos` com **Score (0–100)** + etiqueta de oportunidade (`WhatsApp + Sem site`, `E-mail + Sem site`, etc.), filtro por canal/oportunidade, **Simulação (`POST /api/crm/simulate`)** e **Start direto (WhatsApp ou E-mail)** sem passo intermediário.
   - **Sincronização de respostas & fim do descarte automático**: `worker-disparo.mjs` e `server-webhook.mjs` não descartam mais leads automaticamente (mantendo disponíveis para e-mail) e não sobrescrevem `respondeu` durante envios concorrentes.
+- **Deduplicação, validação no `[DRY-RUN]` e consistência pós-simulação (`agentes/sdr-whatsapp/worker-disparo.mjs`, `crm.mjs`)**:
+  - `worker-disparo.mjs`: deduplica telefones no mesmo lote (`seenPhones`) e executa `checkWhatsApp(phone)` também no `[DRY-RUN]` antes de chamar o Claude (sem alterar `status.json` durante a simulação).
+  - `crm.mjs`: `workerState.lastSimulatedKeys` armazena os leads da última simulação do Assistente para que o disparo real subsequente (sem `ids` explícitos) utilize o mesmo lote simulado.
 
 ## Correções que já foram necessárias
 

@@ -88,6 +88,7 @@ const workerState = {
   startedAt: null,
   lastExitCode: null,
   logs: [],
+  lastSimulatedKeys: [],
 };
 
 function pushLog(line) {
@@ -890,7 +891,14 @@ Formato obrigatório:
           }
         } else {
           const lim = Math.min(18, Math.max(1, Number(act.limit) || 5));
-          keys = allEntries.filter(([, l]) => l.state === "na_fila").slice(0, lim).map(([k]) => k);
+          if (!act.dryRun && workerState.lastSimulatedKeys.length) {
+            // Reutiliza os mesmos leads da última simulação se ainda estiverem na fila.
+            const simSet = new Set(workerState.lastSimulatedKeys);
+            keys = allEntries.filter(([k, l]) => simSet.has(k) && l.state === "na_fila").slice(0, lim).map(([k]) => k);
+          }
+          if (!keys.length) {
+            keys = allEntries.filter(([, l]) => l.state === "na_fila").slice(0, lim).map(([k]) => k);
+          }
           if (!keys.length && act.dryRun) {
             const topMapped = allEntries
               .filter(([, l]) => l.state === "mapeado" && l.telefone)
@@ -910,6 +918,7 @@ Formato obrigatório:
           const started = startWorkerDispatch({ keys, dryRun: !!act.dryRun, forceHorario: true });
           if (!started.ok) reply = started.error;
           else {
+            workerState.lastSimulatedKeys = act.dryRun ? [...keys] : [];
             executed = { type: "start_dispatch", count: keys.length, dryRun: !!act.dryRun };
             if (act.dryRun) {
               reply = `Simulação iniciada para ${keys.length} leads${moved ? ` (${moved} movidos para a fila)` : ""}. Acompanhe o resultado em LOGS AO VIVO!`;

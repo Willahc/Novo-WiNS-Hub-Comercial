@@ -149,22 +149,30 @@ async function main() {
 
   console.log(`🚀 Iniciando lote: ${fila.length} lead(s) (${novos.length} novos, ${followups.length} follow-ups, restante hoje: ${restante}).${DRY_RUN ? " [DRY-RUN]" : ""}`);
 
+  const seenPhones = new Set();
+
   for (let i = 0; i < fila.length; i++) {
     const { key, lead, tipo } = fila[i];
     const phone = normalizePhone(lead.telefone);
 
-    if (!DRY_RUN) {
-      const waCheck = await checkWhatsApp(phone).catch(() => ({ exists: true }));
-      if (!waCheck.exists) {
-        console.log(`⏭️ [${i + 1}/${fila.length}] ${lead.nome} (${phone}) não tem WhatsApp — mantido fora de descartado (disponível para e-mail).`);
+    if (seenPhones.has(phone)) {
+      console.log(`⏭️ [${i + 1}/${fila.length}] ${lead.nome} (${phone}) — telefone duplicado neste lote, pulando.`);
+      continue;
+    }
+    seenPhones.add(phone);
+
+    const waCheck = await checkWhatsApp(phone).catch(() => ({ exists: true }));
+    if (!waCheck.exists) {
+      console.log(`⏭️ [${i + 1}/${fila.length}] ${lead.nome} (${phone}) não tem WhatsApp${DRY_RUN ? " [DRY-RUN]" : " — mantido fora de descartado (disponível para e-mail)"}.`);
+      if (!DRY_RUN) {
         const fresh = loadStatus();
         if (fresh.leads?.[key]) {
           fresh.leads[key].semWhatsapp = true;
           fresh.leads[key].motivo = "sem_whatsapp";
           saveStatus(fresh);
         }
-        continue;
       }
+      continue;
     }
 
     const texto = tipo === "followup"
