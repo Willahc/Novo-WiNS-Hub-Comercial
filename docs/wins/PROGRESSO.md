@@ -121,3 +121,9 @@ Detalhes de operação (logs, backup, restauração, HTTPS): `deploy/README.md`.
   "Veterinario · São paulo" (`ok`) foi preservado.
 - O banco (`jobs.db`) e os CSVs vivem só no volume do servidor e nos backups —
   não entram no git.
+
+## Próximos passos
+
+- Enviar os commits locais de `main` para `origin/main` (`git push`).
+- Validar os fluxos recentes no CRM e no envio/cadência de e-mail em produção.
+- Definir e iniciar a próxima melhoria.
