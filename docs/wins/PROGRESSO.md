@@ -102,6 +102,10 @@ Detalhes de operação (logs, backup, restauração, HTTPS): `deploy/README.md`.
   - **Performance & CRM:** `overviewBaseCache` em memória + paginação/filtro/ordenação server-side em `/api/crm/overview` (**10 KB gzip, ~6 ms quente**), exportação direta `GET /api/crm/export.csv`, propagação completa de `Entry.Tech` (Go CSV → `/places` → `crm.mjs` → filtro `#crmTechFilter` e badges na UI), aba **Todos** restrita a pendentes de ação e filtro `E-mail + Sem site` unificado.
   - **Infraestrutura VPS:** 2 GB de swap (`/swapfile`) habilitado, remoção do backup duplicado no `crontab`, contadores diários em `America/Sao_Paulo` (`todayBr()`), DDD obrigatório no match por 8 dígitos (`findLeadByPhone`), timeouts explícitos (`AbortSignal.timeout`) e `monitor-silencioso.mjs` apontando para `/health`.
 
+- **Materiais executivos e comerciais (`docs/wins/`)**:
+  - `docs/wins/Apresentacao_WiNS_Hub_Comercial.pdf`: apresentação institucional e técnica detalhada da plataforma (8 páginas A4).
+  - `docs/wins/Proposta_WiNS_Hub_Progen_SA.pdf`: proposta executiva B2B de mapeamento e pré-qualificação de fornecedores e clientes para a Progen S.A., incluindo amostra piloto real de Macaé/RJ (8 páginas A4).
+
 ## Correções que já foram necessárias
 
 - `Dockerfile`: copiar `third_party` antes de `go mod download`.
@@ -130,6 +134,6 @@ Detalhes de operação (logs, backup, restauração, HTTPS): `deploy/README.md`.
 
 ## Próximos passos
 
-- Enviar os commits locais de `main` para `origin/main` (`git push`).
-- Validar os fluxos recentes no CRM e no envio/cadência de e-mail em produção.
-- Definir e iniciar a próxima melhoria.
+- Acompanhar respostas e aberturas de prévia do lote D+0 enviado (9 leads de veterinária sem site) e follow-ups automáticos D+3/D+7.
+- Executar a prospecção dos decisores da Progen S.A. (Suprimentos/PMO e Manutenção/Facilities) usando os comandos do Open Bot, os roteiros e os PDFs em `docs/wins/`.
+- Definir o próximo lote de prospecção (WhatsApp ou E-mail) a partir da fila limpa **Todos** no CRM.
