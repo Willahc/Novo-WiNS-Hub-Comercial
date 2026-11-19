@@ -93,12 +93,43 @@ func (j *EmailExtractJob) Process(ctx context.Context, resp *scrapemate.Response
 	}
 
 	j.Entry.Emails = emails
+	j.Entry.Tech = detectSiteTech(resp.Body)
 
 	return j.Entry, nil, nil
 }
 
 func (j *EmailExtractJob) ProcessOnFetchError() bool {
 	return true
+}
+
+func detectSiteTech(body []byte) []string {
+	if len(body) == 0 {
+		return nil
+	}
+	lower := strings.ToLower(string(body))
+	var tech []string
+	checks := []struct {
+		name    string
+		markers []string
+	}{
+		{"WordPress", []string{"wp-content/", "wp-includes/", "wordpress"}},
+		{"Wix", []string{"wixstatic.com", "wix.com", "x-wix-"}},
+		{"Shopify", []string{"cdn.shopify.com", "shopify.theme"}},
+		{"Nuvemshop", []string{"nuvemshop", "tiendanube"}},
+		{"Webflow", []string{"webflow.com", "w-webflow-badge"}},
+		{"RD Station", []string{"d335luupugsy2.cloudfront.net", "rdstation"}},
+		{"GTM", []string{"googletagmanager.com/gtm.js"}},
+		{"Meta Pixel", []string{"connect.facebook.net", "fbq("}},
+	}
+	for _, c := range checks {
+		for _, m := range c.markers {
+			if strings.Contains(lower, m) {
+				tech = append(tech, c.name)
+				break
+			}
+		}
+	}
+	return tech
 }
 
 func docEmailExtractor(doc *goquery.Document) []string {

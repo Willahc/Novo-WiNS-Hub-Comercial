@@ -119,6 +119,15 @@ svg:not(.leaflet-zoom-animated) {
 
 .brand { display: flex; align-items: center; gap: 12px; }
 
+.brand-logo {
+    height: 88px;
+    width: auto;
+    max-width: 148px;
+    object-fit: contain;
+    display: block;
+    margin: -20px 0 -18px -4px;
+}
+
 .logo {
     height: 34px;
     width: auto;

@@ -13,6 +13,7 @@ import { renderPreviewHtml, slugify, detectNiche } from "../entrega/previas/temp
 import { handleCrmRequest } from "./crm.mjs";
 import { handleAuthRequest } from "./auth.mjs";
 import { startTelegramBot } from "./telegram-bot.mjs";
+import { checkInboxReplies, runDueEmailCadence } from "./email.mjs";
 
 loadEnv();
 
@@ -203,14 +204,32 @@ const server = http.createServer(async (req, res) => {
     const token = decodeURIComponent(req.url.slice("/previa/".length).split("?")[0]).replace(/\/$/, "");
     const db = loadStatus();
     const idPrefix = parseInt(token, 10);
-    const lead = Object.values(db.leads || {}).find(
-      (l) => `${l.id}-${slugify(l.nome)}` === token || slugify(l.nome) === token || (!Number.isNaN(idPrefix) && l.id === idPrefix)
+    const match = Object.entries(db.leads || {}).find(
+      ([, l]) => `${l.id}-${slugify(l.nome)}` === token || slugify(l.nome) === token || (!Number.isNaN(idPrefix) && l.id === idPrefix)
     );
+    const leadKey = match?.[0];
+    const lead = match?.[1];
     if (!lead) {
       res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
       res.end("Prévia não encontrada");
       return;
     }
+
+    const ua = String(req.headers["user-agent"] || "");
+    const isBot = /whatsapp|facebookexternalhit|telegrambot|googlebot|headlesschrome|curl|wget|python|node/i.test(ua);
+    if (!isBot && leadKey) {
+      const nowIso = new Date().toISOString();
+      const prevAt = lead.previewLastViewedAt ? new Date(lead.previewLastViewedAt).getTime() : 0;
+      const views = (lead.previewViews || 0) + 1;
+      db.leads[leadKey].previewViews = views;
+      db.leads[leadKey].previewLastViewedAt = nowIso;
+      saveStatus(db);
+      logActivity("PREVIA", `👀 ${lead.nome} (#${lead.id}) abriu a prévia (${views}x)`);
+      if (views === 1 || Date.now() - prevAt > 30 * 60 * 1000) {
+        notifyTelegram(`👀 *Prévia visualizada!*\n*Empresa:* ${lead.nome} (#${lead.id})\n*Acessos:* ${views}x\n*Tel:* ${lead.telefone || "-"}\n*E-mail:* ${lead.email || "-"}`).catch(() => {});
+      }
+    }
+
     const slug = slugify(lead.nome);
     const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
     const customFile = path.join(rootDir, "agentes", "entrega", "previas", "geradas", slug, "index.html");
@@ -252,8 +271,39 @@ const server = http.createServer(async (req, res) => {
   });
 });
 
+async function runEmailMaintenance() {
+  try {
+    const db = loadStatus();
+    const replies = await checkInboxReplies(db).catch(() => []);
+    if (replies.length) {
+      saveStatus(db);
+      for (const r of replies) {
+        logActivity("Email-IMAP", `📩 Resposta detectada de ${r.nome} (${r.email}) — cadência pausada.`);
+        await notifyTelegram(`📩 *Resposta por E-mail!*\n*Empresa:* ${r.nome} (#${r.id})\n*E-mail:* ${r.email}\n_Cadência automática pausada._`).catch(() => {});
+      }
+    }
+
+    const tz = process.env.TZ || "America/Sao_Paulo";
+    const now = new Date(new Date().toLocaleString("en-US", { timeZone: tz }));
+    const dia = now.getDay();
+    const hora = now.getHours();
+    if (dia >= 1 && dia <= 5 && hora >= 9 && hora < 18) {
+      const sent = await runDueEmailCadence(db, { limit: 10, dryRun: false }).catch(() => []);
+      if (sent.some((x) => x.ok)) {
+        saveStatus(db);
+        const okCount = sent.filter((x) => x.ok).length;
+        logActivity("Email-Cadence", `✉️ Follow-up automático D+3/D+7 enviado para ${okCount} lead(s).`);
+      }
+    }
+  } catch (err) {
+    console.error("Erro na manutenção de e-mail:", err.message);
+  }
+}
+
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`🤖 Webhook do agente ouvindo em http://0.0.0.0:${PORT}/webhook/whatsapp`);
   startTelegramBot();
+  setTimeout(runEmailMaintenance, 30_000);
+  setInterval(runEmailMaintenance, 15 * 60 * 1000);
 });
 

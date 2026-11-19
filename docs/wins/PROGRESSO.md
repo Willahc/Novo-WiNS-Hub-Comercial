@@ -1,6 +1,6 @@
 # WiNS Hub Comercial — estado do projeto
 
-Última atualização: 17/11/2026
+Última atualização: 19/11/2026
 
 Este é o fork do `google-maps-scraper` publicado como serviço unificado em
 **https://winshubcomercial.com.br**. O documento resume onde a aplicação roda,
@@ -84,6 +84,17 @@ Detalhes de operação (logs, backup, restauração, HTTPS): `deploy/README.md`.
 - **Deduplicação, validação no `[DRY-RUN]` e consistência pós-simulação (`agentes/sdr-whatsapp/worker-disparo.mjs`, `crm.mjs`)**:
   - `worker-disparo.mjs`: deduplica telefones no mesmo lote (`seenPhones`) e executa `checkWhatsApp(phone)` também no `[DRY-RUN]` antes de chamar o Claude (sem alterar `status.json` durante a simulação).
   - `crm.mjs`: `workerState.lastSimulatedKeys` armazena os leads da última simulação do Assistente para que o disparo real subsequente (sem `ids` explícitos) utilize o mesmo lote simulado.
+- **Escrita atômica, Prompt Caching, MX & Pitch por origem (`lib.mjs`, `worker-disparo.mjs`, `email.mjs`, `crm.mjs`, `web/static/`)**:
+  - `lib.mjs`: `saveStatus()` agora usa escrita atômica (arquivo temporário + `renameSync`), e `callClaude()` suporta `cacheSystem` (Prompt Caching da Anthropic) e `model` configurável (`CLAUDE_FAST_MODEL`).
+  - `worker-disparo.mjs`: `detectLeadContext()` adapta o prompt quando o lead vem da base CNPJ (sem avaliações no Maps, razão social longa) e evita citar "São Paulo" quando o DDD diverge.
+  - `email.mjs`: `validateEmailMx()` valida sintaxe + registro MX do domínio com cache em memória antes de gerar/enviar cold e-mail.
+  - `web/static/`: logo do cabeçalho ampliado (`.brand-logo` em `wins.css` e `index.html`) e imagem reconstruída no container `deploy-winshub-1`.
+- **Rastreamento de prévia, IMAP INBOX, cadência automática & detecção de stack (`server-webhook.mjs`, `email.mjs`, `worker-disparo.mjs`, `gmaps/`, `wins.js`)**:
+  - `server-webhook.mjs`: `/previa/:slug` contabiliza `previewViews`/`previewLastViewedAt` (ignorando bots) e envia alerta no Telegram; scheduler a cada 15 min verifica respostas na `INBOX` via IMAP (`checkInboxReplies`) e dispara follow-ups D+3/D+7 devidos (`runDueEmailCadence`) em horário comercial.
+  - `email.mjs`: envio inclui link automático da prévia + imagem `.png` incorporada (`cid:previa-site`), e `--dry-run` / `dryRun` pula chamadas ao Claude.
+  - `worker-disparo.mjs`: prioriza celulares e DDD alvo (`TARGET_DDD`) na fila de WhatsApp; `--dry-run` não gasta tokens do Claude por padrão.
+  - `gmaps/emailjob.go` & `gmaps/entry.go`: `detectSiteTech()` identifica WordPress, Wix, Shopify, Nuvemshop, Webflow, RD Station, GTM e Meta Pixel em `Entry.Tech`.
+  - `web/static/js/wins.js`: formatação visual `(DD) 99999-9999` nos cards do CRM e badge `👀 Viu prévia (Nx)`.
 
 ## Correções que já foram necessárias
 

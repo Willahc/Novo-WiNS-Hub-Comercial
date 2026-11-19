@@ -475,6 +475,7 @@ export async function handleCrmRequest(req, res) {
         handoff: !!l.handoff,
         msgCount: msgs.length,
         lastMsgAt: msgs.length ? msgs[msgs.length - 1].at : null,
+        previewViews: l.previewViews || 0,
         previewUrl: `${previewBase}/${slug}`,
       };
     });
@@ -784,7 +785,7 @@ Formato obrigatório:
         ...history.map((m) => ({ role: m.role === "assistant" ? "assistant" : "user", content: String(m.content || "") })),
         { role: "user", content: message },
       ];
-      const raw = await callClaude({ system: sys, messages: msgs, maxTokens: 1400 });
+      const raw = await callClaude({ system: sys, messages: msgs, maxTokens: 1400, cacheSystem: true });
       const s = raw.indexOf("{");
       const e = raw.lastIndexOf("}");
       let parsed = null;

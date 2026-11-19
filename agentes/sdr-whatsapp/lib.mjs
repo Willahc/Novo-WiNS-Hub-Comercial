@@ -1,5 +1,5 @@
 // lib.mjs — Utilitários compartilhados do agente na VPS (Node 18+, zero dependências)
-import { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync, statSync } from "node:fs";
+import { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync, statSync, renameSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -89,7 +89,9 @@ export function loadStatus() {
 }
 
 export function saveStatus(db) {
-  writeFileSync(STATUS_PATH, JSON.stringify(db, null, 2), "utf8");
+  const tmp = `${STATUS_PATH}.${process.pid}.${Date.now()}.tmp`;
+  writeFileSync(tmp, JSON.stringify(db, null, 2), "utf8");
+  renameSync(tmp, STATUS_PATH);
 }
 
 export function findLeadByPhone(db, phone) {
@@ -378,10 +380,13 @@ function recordAnthropicUsage({ model, inputTokens = 0, outputTokens = 0, error 
   } catch {}
 }
 
-export async function callClaude({ system, messages, maxTokens = 450 }) {
+export async function callClaude({ system, messages, maxTokens = 450, model: customModel, cacheSystem = false }) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY não configurada no .env");
-  const model = process.env.CLAUDE_MODEL || "claude-sonnet-4-20250514";
+  const model = customModel || process.env.CLAUDE_MODEL || "claude-sonnet-4-20250514";
+  const systemPayload = cacheSystem && typeof system === "string" && system.length > 0
+    ? [{ type: "text", text: system, cache_control: { type: "ephemeral" } }]
+    : system;
 
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -393,7 +398,7 @@ export async function callClaude({ system, messages, maxTokens = 450 }) {
     body: JSON.stringify({
       model,
       max_tokens: maxTokens,
-      system,
+      system: systemPayload,
       messages,
     }),
   });

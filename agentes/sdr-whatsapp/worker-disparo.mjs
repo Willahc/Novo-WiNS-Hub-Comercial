@@ -21,7 +21,7 @@ const ONLY_KEYS = keysArg ? new Set(keysArg.slice(7).split(",").map((s) => s.tri
 const MAX_POR_DIA = parseInt(process.env.MAX_DISPAROS_DIA || "18", 10);
 const DELAY_MIN_SEC = parseInt(process.env.DELAY_MIN_SEG || "180", 10); // 3 min
 const DELAY_MAX_SEC = parseInt(process.env.DELAY_MAX_SEG || "420", 10); // 7 min
-const USE_CLAUDE_ABERTURA = (process.env.USE_CLAUDE_ABERTURA || "true") === "true";
+const USE_CLAUDE_ABERTURA = (process.env.USE_CLAUDE_ABERTURA || "true") === "true" && (!DRY_RUN || process.argv.includes("--with-claude"));
 const PREVIEW_BASE_URL = (process.env.PREVIEW_BASE_URL || "").replace(/\/$/, "");
 
 function previewUrlFor(lead) {
@@ -49,24 +49,48 @@ function saveDisparosHoje(log) {
   writeFileSync(DAILY_LOG_PATH, JSON.stringify(log, null, 2), "utf8");
 }
 
+function detectLeadContext(lead) {
+  const nome = String(lead?.nome || "");
+  const phone = normalizePhone(lead?.telefone);
+  const ddd = phone.startsWith("55") && phone.length >= 12 ? phone.slice(2, 4) : "";
+  const isCnpj = Boolean(lead?.cnpj) || (!lead?.avaliacoes && !lead?.notaGoogle) || /\b(ltda|s\/a|s\.a\.|eireli|distribuidora|comercio|industria)\b/i.test(nome);
+  const cidadeLower = String(lead?.cidade || "").toLowerCase();
+  const cidadeDivergeDdd = Boolean(ddd && ddd !== "11" && (cidadeLower.includes("são paulo") || cidadeLower.includes("sao paulo")));
+  return { ddd, isCnpj, hasMapsReviews: Number(lead?.avaliacoes || 0) > 0, cidadeDivergeDdd };
+}
+
 async function gerarMensagemAbertura(lead) {
   const qual = qualificarLead(lead);
+  const ctx = detectLeadContext(lead);
   const previewUrl = qual.usarPrevia ? previewUrlFor(lead) : "";
+  const baseMsg = lead.msg || `Olá! Tudo bem? Me chamo William, da WiNS Hub Comercial. Vi a ${lead.nome} e preparei uma apresentação rápida de ${qual.oferta.toLowerCase()} para vocês.`;
   const fallbackMsg = previewUrl
-    ? `${lead.msg}\n\nJá deixei a prévia no ar aqui para você dar uma olhada: ${previewUrl}`
-    : lead.msg;
+    ? (lead.msg ? `${baseMsg}\n\nJá deixei a prévia no ar aqui para você dar uma olhada: ${previewUrl}` : `Olá! Tudo bem? Me chamo William, da WiNS Hub Comercial. Montei uma prévia personalizada de site para a ${lead.nome} dar uma olhada: ${previewUrl}`)
+    : baseMsg;
 
   if (!USE_CLAUDE_ABERTURA || !process.env.ANTHROPIC_API_KEY) {
     return fallbackMsg;
   }
 
-  const system = `Você é William, consultor comercial da WiNS Hub Comercial (agência digital em São Paulo especializada em Sites, Google/Meta Ads e Vídeos Curtos com IA).
+  const extraRules = [
+    ctx.hasMapsReviews
+      ? "- Cite pelo menos 1 fato concreto do negócio (ex.: número de avaliações no Google ou cidade)."
+      : "- NÃO mencione 'avaliações no Google' nem 'boa presença no Google Maps' (este lead não veio com avaliações do Maps); foque na presença digital e em clientes que buscam o segmento no Google.",
+    ctx.isCnpj
+      ? "- Se o nome da empresa for razão social longa (com LTDA, S/A, etc.), use uma forma curta e natural do nome."
+      : "",
+    ctx.cidadeDivergeDdd
+      ? `- ATENÇÃO: o DDD do telefone é (${ctx.ddd}), diferente da cidade cadastrada. NÃO diga "aqui em São Paulo" nem cite a cidade.`
+      : "",
+  ].filter(Boolean).join("\n");
+
+  const system = `Você é William, consultor comercial da WiNS Hub Comercial (agência digital especializada em Sites, Google/Meta Ads e Vídeos Curtos com IA).
 Redija uma mensagem de abertura para WhatsApp curta, humana e direta (máximo 4 linhas).
 
 REGRAS OBRIGATÓRIAS:
 - SEMPRE se apresente logo na primeira frase como William, da WiNS Hub Comercial (ex.: "Olá! Tudo bem? Me chamo William, da WiNS Hub Comercial, e trabalho com criação de sites e presença digital."). NUNCA use outro nome, colchetes ou placeholders como [Nome] ou [Agência].
 - Use APENAS os fatos verificados abaixo. NUNCA invente dados, métricas ou diga que o site está fora do ar.
-- Cite pelo menos 1 fato concreto do negócio (ex.: número de avaliações no Google ou cidade).
+${extraRules}
 - Foque na oferta recomendada: ${qual.oferta} (${qual.sinal}).
 - ${previewUrl ? `Inclua EXATAMENTE este link da prévia personalizada na mensagem: ${previewUrl}` : 'Termine com uma pergunta leve de sim/não (ex: "Faz sentido conversar?" ou "Posso te mostrar como funciona?").'}
 - Sem emojis em excesso (no máximo 1 ou nenhum).`;
@@ -80,6 +104,8 @@ ${lead.msg}`;
     system,
     messages: [{ role: "user", content: prompt }],
     maxTokens: 280,
+    model: process.env.CLAUDE_FAST_MODEL || undefined,
+    cacheSystem: true,
   });
   return texto.trim() || fallbackMsg;
 }
@@ -108,9 +134,20 @@ async function gerarMensagemFollowUp(lead) {
   const texto = await callClaude({
     system,
     messages: [{ role: "user", content: `Gere o follow-up para ${lead.nome} (${lead.nicho}, ${lead.cidade}).` }],
-    maxTokens: 160,
+    maxTokens: 180,
+    model: process.env.CLAUDE_FAST_MODEL || undefined,
+    cacheSystem: true,
   });
   return texto.trim() || fallback;
+}
+
+function phonePriority(rawPhone) {
+  const p = normalizePhone(rawPhone);
+  if (!p) return 0;
+  const targetDdd = process.env.TARGET_DDD || "11";
+  const ddd = p.startsWith("55") && p.length >= 12 ? p.slice(2, 4) : "";
+  const isMobile = p.startsWith("55") && p.length === 13 && p[4] === "9";
+  return (isMobile ? 4 : 0) + (ddd === targetDdd ? 2 : 0);
 }
 
 async function main() {
@@ -130,7 +167,7 @@ async function main() {
   const todos = Object.entries(db.leads || {}).filter(([k]) => !ONLY_KEYS || ONLY_KEYS.has(k));
   const novos = todos
     .filter(([, l]) => l.state === "na_fila" && !l.semWhatsapp && l.canal === "whatsapp" && normalizePhone(l.telefone))
-    .sort((a, b) => (b[1].score || 0) - (a[1].score || 0))
+    .sort((a, b) => ((b[1].score || 0) + phonePriority(b[1].telefone)) - ((a[1].score || 0) + phonePriority(a[1].telefone)))
     .map(([key, lead]) => ({ key, lead, tipo: "abertura" }));
 
   const followups = todos

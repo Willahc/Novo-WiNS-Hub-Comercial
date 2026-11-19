@@ -1107,7 +1107,14 @@
             var igHandle = l.instagram || instagramHandle(siteStr);
             var igUrl = l.instagramUrl || (instagramHandle(siteStr) ? siteStr : '');
             var contactParts = [];
-            if (l.telefone) contactParts.push('<a class="t-site" href="https://wa.me/' + esc(l.telefone) + '" target="_blank" rel="noopener">📱 ' + esc(l.telefone) + '</a>');
+            var fmtPhone = function (raw) {
+                var d = String(raw || '').replace(/\D/g, '');
+                if (d.indexOf('55') === 0 && d.length >= 12) d = d.slice(2);
+                if (d.length === 11) return '(' + d.slice(0, 2) + ') ' + d.slice(2, 7) + '-' + d.slice(7);
+                if (d.length === 10) return '(' + d.slice(0, 2) + ') ' + d.slice(2, 6) + '-' + d.slice(6);
+                return raw;
+            };
+            if (l.telefone) contactParts.push('<a class="t-site" href="https://wa.me/' + esc(l.telefone) + '" target="_blank" rel="noopener">📱 ' + esc(fmtPhone(l.telefone)) + '</a>');
             if (l.email) contactParts.push('<div class="t-cat">✉️ ' + esc(l.email) + (l.emailCadence ? ' (E' + l.emailCadence.step + '/3)' : '') + '</div>');
             if (igHandle) contactParts.push('<div><a class="t-site" href="' + esc(igUrl) + '" target="_blank" rel="noopener">' + esc(igHandle) + '</a></div>');
             var contactCol = contactParts.length ? contactParts.join('') : '<span class="t-cat">—</span>';
@@ -1117,6 +1124,7 @@
                 : '<span class="tag dark">Sem site</span>';
             var metaBadges = [];
             if (l.oportunidade) metaBadges.push('<span class="opp-badge">' + esc(l.oportunidade) + '</span>');
+            if (l.previewViews > 0) metaBadges.push('<span class="crm-meta-chip ok">👀 Viu prévia (' + l.previewViews + 'x)</span>');
             if (l.foraDoMaps) metaBadges.push('<span class="crm-meta-chip warn">📍 Fora do Maps</span>');
             if (l.optanteMei) metaBadges.push('<span class="crm-meta-chip ok">MEI</span>');
             metaBadges.push('<span class="crm-meta-chip">' + int(l.avaliacoes) + ' aval.</span>');
