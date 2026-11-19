@@ -5,7 +5,7 @@ import { promisify } from "node:util";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildInboxReport } from "./chefe-gabinete.mjs";
-import { loadStatus, saveStatus, getEvolutionState, getAnthropicUsage, callClaude, notifyTelegram, logActivity, sleep } from "./lib.mjs";
+import { loadStatus, saveStatus, patchStatus, getEvolutionState, getAnthropicUsage, callClaude, notifyTelegram, logActivity, sleep } from "./lib.mjs";
 import { auditSite } from "../prospeccao/site-audit.mjs";
 
 const execFileAsync = promisify(execFile);
@@ -70,7 +70,16 @@ async function handleCommand(cmdRaw) {
       if (!l.instagram && a.instagram) { l.instagram = a.instagram; l.instagramUrl = a.instagramUrl; }
       lines.push(`• ${l.nome}: ${a.score}/100 (Seg ${a.securityScore} · Qual ${a.qualityScore})`);
     }
-    saveStatus(db);
+    patchStatus((fresh) => {
+      for (const [k, l] of targets) {
+        if (!fresh.leads?.[k]) continue;
+        fresh.leads[k].siteAudit = l.siteAudit;
+        if (!fresh.leads[k].instagram && l.instagram) {
+          fresh.leads[k].instagram = l.instagram;
+          fresh.leads[k].instagramUrl = l.instagramUrl;
+        }
+      }
+    });
     logActivity("Telegram", `🔍 Auditou ${targets.length} sites via comando /auditar`);
     return `🔍 Sites auditados:\n${lines.join("\n")}`;
   }
@@ -85,12 +94,12 @@ const tgHistory = (() => {
       const arr = JSON.parse(readFileSync(TG_HISTORY_PATH, "utf8"));
       return Array.isArray(arr) ? arr.slice(-12) : [];
     }
-  } catch {}
+  } catch { }
   return [];
 })();
 
 function saveTgHistory() {
-  try { writeFileSync(TG_HISTORY_PATH, JSON.stringify(tgHistory.slice(-12), null, 2)); } catch {}
+  try { writeFileSync(TG_HISTORY_PATH, JSON.stringify(tgHistory.slice(-12), null, 2)); } catch { }
 }
 
 function buildAgentContext() {
@@ -205,7 +214,7 @@ ${ctx}`;
       child.stdout.on("data", (d) => { const s = d.toString("utf8"); out += s; logActivity("Disparador", s); });
       child.stderr.on("data", (d) => { const s = d.toString("utf8"); out += s; logActivity("Disparador", s); });
       child.on("close", (code) => {
-        notifyTelegram(`✅ Lote do Telegram finalizado (código ${code}):\n${out.trim().slice(-1200)}`).catch(() => {});
+        notifyTelegram(`✅ Lote do Telegram finalizado (código ${code}):\n${out.trim().slice(-1200)}`).catch(() => { });
       });
       reply += `\n\n🚀 Disparo REAL iniciado em segundo plano para ${elegiveis.length} lead(s):\n• ${elegiveis.map((m) => m.nome).join("\n• ")}`;
       if (ignorados.length) {

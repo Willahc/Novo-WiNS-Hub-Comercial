@@ -40,7 +40,7 @@ async function main() {
   const winshubOk = await checkHttp("http://127.0.0.1:8080/");
   if (!winshubOk) issues.push("Painel WiNS Hub (:8080) offline");
 
-  const webhookOk = await checkHttp("http://127.0.0.1:3005/previa/999-maristela-veterinaria");
+  const webhookOk = await checkHttp("http://127.0.0.1:3005/health");
   if (!webhookOk) issues.push("Webhook SDR (:3005) offline");
 
   const claude = getAnthropicUsage();

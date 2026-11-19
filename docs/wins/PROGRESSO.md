@@ -95,6 +95,12 @@ Detalhes de operação (logs, backup, restauração, HTTPS): `deploy/README.md`.
   - `worker-disparo.mjs`: prioriza celulares e DDD alvo (`TARGET_DDD`) na fila de WhatsApp; `--dry-run` não gasta tokens do Claude por padrão.
   - `gmaps/emailjob.go` & `gmaps/entry.go`: `detectSiteTech()` identifica WordPress, Wix, Shopify, Nuvemshop, Webflow, RD Station, GTM e Meta Pixel em `Entry.Tech`.
   - `web/static/js/wins.js`: formatação visual `(DD) 99999-9999` nos cards do CRM e badge `👀 Viu prévia (Nx)`.
+- **Auditoria geral, correções críticas & otimizações de performance (`server-webhook.mjs`, `crm.mjs`, `email.mjs`, `lib.mjs`, `auth.mjs`, `worker-disparo.mjs`, `telegram-bot.mjs`, `monitor-silencioso.mjs`, `gerar-fila.mjs`, `gmaps/entry.go`, `web/places.go`, `index.html`, `wins.js`)**:
+  - **Estabilidade & Concorrência:** deduplicação por `messageId` + fila/debounce de 3,5 s por telefone no webhook WhatsApp (eliminando respostas duplicadas), proteção global contra `URIError`/`decodeURIComponent` em `server-webhook.mjs` e `auth.mjs`, e `patchStatus()` atômico em todas as operações assíncronas longas.
+  - **Áudio no WhatsApp:** suporte a `audioMessage`/`pttMessage` com transcrição automática via Groq Whisper / OpenAI Whisper / Gemini Flash (quando configurados no `.env`) e fallback imediato com alerta no Telegram + resposta educada.
+  - **E-mail & Raio-X:** `email.mjs` agora lê/grava `lead.siteAudit` real, corrige transição `mapeado → enviado` (recuperando 19 leads órfãos), corrige `logActivity("Email", ...)`, escapa HTML e clona `history` no `dryRun`.
+  - **Performance & CRM:** `overviewBaseCache` em memória + paginação/filtro/ordenação server-side em `/api/crm/overview` (**10 KB gzip, ~6 ms quente**), exportação direta `GET /api/crm/export.csv`, propagação completa de `Entry.Tech` (Go CSV → `/places` → `crm.mjs` → filtro `#crmTechFilter` e badges na UI), aba **Todos** restrita a pendentes de ação e filtro `E-mail + Sem site` unificado.
+  - **Infraestrutura VPS:** 2 GB de swap (`/swapfile`) habilitado, remoção do backup duplicado no `crontab`, contadores diários em `America/Sao_Paulo` (`todayBr()`), DDD obrigatório no match por 8 dígitos (`findLeadByPhone`), timeouts explícitos (`AbortSignal.timeout`) e `monitor-silencioso.mjs` apontando para `/health`.
 
 ## Correções que já foram necessárias
 

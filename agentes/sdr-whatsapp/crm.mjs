@@ -1,12 +1,13 @@
 // crm.mjs — APIs e controle do Mini-CRM + Start/Stop do worker-disparo
-import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn, execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { gzipSync } from "node:zlib";
 import {
-  loadStatus, saveStatus, normalizePhone, getConversation, qualificarLead, callClaude, DAILY_LOG_PATH,
+  loadStatus, saveStatus, patchStatus, normalizePhone, getConversation, qualificarLead, callClaude,
+  DAILY_LOG_PATH, STATUS_PATH, CONVERSAS_DIR,
   logActivity, readActivity, getEvolutionState, getAnthropicUsage,
 } from "./lib.mjs";
 import { slugify, detectNiche } from "../entrega/previas/templates.mjs";
@@ -296,6 +297,7 @@ async function loadLiveJobRows() {
               phone: p.phone || "",
               website: p.website || "",
               emails: p.emails || "",
+              tech: p.tech || "",
               rating: Number(p.review_rating || p.rating) || 0,
               reviews: Number(p.review_count || p.reviews) || 0,
               link: p.link || "",
@@ -397,6 +399,293 @@ function materializeLeads(db, rawLeads, targetState = "na_fila") {
   return keys;
 }
 
+let overviewBaseCache = { key: "", data: null };
+
+function getOverviewCacheKey() {
+  let stSig = "0";
+  try { const s = statSync(STATUS_PATH); stSig = `${s.mtimeMs}:${s.size}`; } catch {}
+  let convSig = "0";
+  try { const c = statSync(CONVERSAS_DIR); convSig = `${c.mtimeMs}`; } catch {}
+  return `${stSig}|${convSig}|${liveJobsCache.at}|${archiveCache.key}`;
+}
+
+function leadTechList(l) {
+  const set = new Set();
+  const addAll = (arr) => {
+    if (!Array.isArray(arr)) return;
+    for (const x of arr) {
+      const s = String(x || "").trim();
+      if (s) set.add(s);
+    }
+  };
+  addAll(l.tech);
+  addAll(l.siteAudit?.stack);
+  addAll(l.siteAudit?.pixels);
+  return [...set];
+}
+
+function isPendingLead(l) {
+  return (!l.state || l.state === "mapeado") && !l.emailCadence;
+}
+
+async function buildOverviewBase() {
+  const arch = loadArchiveRows();
+  const liveRows = await loadLiveJobRows();
+  const cKey = getOverviewCacheKey();
+  if (overviewBaseCache.key === cKey && overviewBaseCache.data) {
+    return overviewBaseCache.data;
+  }
+
+  const db = loadStatus();
+  let dbDirty = false;
+  const rawLeads = Object.entries(db.leads || {});
+  const counts = {
+    total: 0,
+    pending: 0,
+    mapeado: 0,
+    na_fila: 0,
+    enviado: 0,
+    visualizado: 0,
+    respondeu: 0,
+    proposto: 0,
+    fechado: 0,
+    descartado: 0,
+  };
+  const byNiche = {};
+  const previewBase = (process.env.PREVIEW_BASE_URL || "/previa").replace(/\/$/, "");
+  const seenPhones = new Set();
+  const seenNames = new Set();
+
+  const leads = rawLeads.map(([key, l]) => {
+    const normPhone = normalizePhone(l.telefone);
+    const msgs = normPhone ? getConversation(normPhone) : [];
+    if (msgs.some((m) => m.role === "user") && ["na_fila", "enviado", "visualizado"].includes(l.state)) {
+      l.state = "respondeu";
+      db.leads[key].state = "respondeu";
+      dbDirty = true;
+    }
+    const st = l.state || "na_fila";
+    counts.total++;
+    if (st in counts) counts[st]++;
+    if ((!st || st === "mapeado") && !l.emailCadence) counts.pending++;
+    if (normPhone) seenPhones.add(normPhone.slice(-8));
+    seenNames.add(`${String(l.nome || "").toLowerCase().trim()}|${String(l.cidade || "").toLowerCase().trim()}`);
+
+    const nicho = l.nicho || "Outro";
+    if (!byNiche[nicho]) {
+      byNiche[nicho] = { nicho, total: 0, na_fila: 0, enviados: 0, respostas: 0, fechados: 0 };
+    }
+    byNiche[nicho].total++;
+    if (st === "na_fila") byNiche[nicho].na_fila++;
+    if (["enviado", "visualizado", "respondeu", "proposto", "fechado"].includes(st)) byNiche[nicho].enviados++;
+    if (["respondeu", "proposto", "fechado"].includes(st)) byNiche[nicho].respostas++;
+    if (st === "fechado") byNiche[nicho].fechados++;
+
+    const slug = `${l.id}-${slugify(l.nome)}`;
+    const igMatch = String(l.instagramUrl || l.site || "").match(/instagram\.com\/([a-zA-Z0-9._]+)/i);
+    const igHandle = l.instagram || (igMatch && !/^(p|reel|reels|stories|explore|accounts|tv)$/i.test(igMatch[1]) ? `@${igMatch[1]}` : "");
+    const igUrl = l.instagramUrl || (igHandle ? `https://www.instagram.com/${igHandle.replace(/^@/, "")}/` : "");
+
+    const emailStr = l.email || "";
+    const scored = computeProspectScore({
+      temSite: !!l.temSite,
+      telefone: normPhone,
+      email: emailStr,
+      avaliacoes: l.avaliacoes || 0,
+      notaGoogle: l.notaGoogle || 0,
+      siteAudit: l.siteAudit || null,
+    });
+
+    const item = {
+      key,
+      id: l.id,
+      nome: l.nome,
+      nicho,
+      nichoGrupo: detectNiche(nicho),
+      cidade: l.cidade,
+      telefone: normPhone,
+      email: emailStr,
+      instagram: igHandle,
+      instagramUrl: igUrl,
+      state: st,
+      score: scored.score,
+      oportunidade: scored.oportunidade,
+      canalIdeal: scored.canalIdeal,
+      avaliacoes: l.avaliacoes || 0,
+      notaGoogle: l.notaGoogle || 0,
+      temSite: !!l.temSite,
+      site: l.site || "",
+      tech: Array.isArray(l.tech) ? l.tech : [],
+      siteAudit: l.siteAudit || null,
+      lighthouse: l.lighthouse || null,
+      emailCadence: l.emailCadence || null,
+      foraDoMaps: !!l.foraDoMaps,
+      optanteMei: !!l.optanteMei,
+      cnpj: l.cnpj || "",
+      endereco: l.endereco || "",
+      emitido: l.emitido || "",
+      handoff: !!l.handoff,
+      msgCount: msgs.length,
+      lastMsgAt: msgs.length ? msgs[msgs.length - 1].at : null,
+      previewViews: l.previewViews || 0,
+      previewUrl: `${previewBase}/${slug}`,
+    };
+    item.tech = leadTechList(item);
+    return item;
+  });
+
+  if (dbDirty) saveStatus(db);
+
+  let scrapIdx = 1;
+  for (const row of [...liveRows, ...(arch.rows || [])]) {
+    const normPhone = normalizePhone(row.phone);
+    const p8 = normPhone ? normPhone.slice(-8) : "";
+    const nameKey = `${String(row.title || "").toLowerCase().trim()}|${String(row.city || "").toLowerCase().trim()}`;
+    if ((p8 && seenPhones.has(p8)) || seenNames.has(nameKey)) continue;
+    if (p8) seenPhones.add(p8);
+    seenNames.add(nameKey);
+
+    const emailFirst = String(row.emails || "").split(/[;,]/)[0].trim();
+    const siteRaw = String(row.website || "").trim();
+    const igMatch = siteRaw.match(/instagram\.com\/([a-zA-Z0-9._]+)/i);
+    const igHandle = igMatch && !/^(p|reel|reels|stories|explore|accounts|tv)$/i.test(igMatch[1]) ? `@${igMatch[1]}` : "";
+    const igUrl = igHandle ? `https://www.instagram.com/${igHandle.replace(/^@/, "")}/` : "";
+    const isSocial = /instagram\.com|facebook\.com|linktr\.ee|wa\.me/i.test(siteRaw);
+    const temSite = !!siteRaw && !isSocial;
+
+    counts.total++;
+    counts.mapeado++;
+    counts.pending++;
+    const nicho = row.category || "Outro";
+    if (!byNiche[nicho]) byNiche[nicho] = { nicho, total: 0, na_fila: 0, enviados: 0, respostas: 0, fechados: 0 };
+    byNiche[nicho].total++;
+
+    const scored = computeProspectScore({
+      temSite,
+      telefone: normPhone,
+      email: emailFirst,
+      avaliacoes: row.reviews || 0,
+      notaGoogle: row.rating || 0,
+      siteAudit: null,
+    });
+
+    leads.push({
+      key: `scraped:${slugify(row.title)}:${scrapIdx++}`,
+      id: null,
+      nome: row.title,
+      nicho,
+      nichoGrupo: detectNiche(nicho),
+      cidade: row.city || "",
+      telefone: normPhone,
+      email: emailFirst,
+      instagram: igHandle,
+      instagramUrl: igUrl,
+      state: "mapeado",
+      score: scored.score,
+      oportunidade: scored.oportunidade,
+      canalIdeal: scored.canalIdeal,
+      avaliacoes: row.reviews || 0,
+      notaGoogle: row.rating || 0,
+      temSite,
+      site: temSite ? siteRaw : "",
+      tech: row.tech ? String(row.tech).split(",").map((s) => s.trim()).filter(Boolean) : [],
+      siteAudit: null,
+      lighthouse: null,
+      emailCadence: null,
+      emitido: "",
+      handoff: false,
+      msgCount: 0,
+      lastMsgAt: null,
+      previewViews: 0,
+      previewUrl: "",
+      source: row.source || "Scrap",
+    });
+  }
+
+  leads.sort((a, b) => {
+    const ta = a.lastMsgAt ? Date.parse(a.lastMsgAt) : 0;
+    const tb = b.lastMsgAt ? Date.parse(b.lastMsgAt) : 0;
+    if (tb !== ta) return tb - ta;
+    if ((b.score || 0) !== (a.score || 0)) return (b.score || 0) - (a.score || 0);
+    return (b.avaliacoes || 0) - (a.avaliacoes || 0);
+  });
+
+  const auditedCount = rawLeads.filter(([, l]) => !!l.siteAudit).length;
+  const data = {
+    counts,
+    byNiche: Object.values(byNiche).sort((a, b) => b.total - a.total),
+    auditedCount,
+    leads,
+  };
+  overviewBaseCache = { key: getOverviewCacheKey(), data };
+  return data;
+}
+
+function filterAndSortLeads(leads, { state = "all", opp = "all", tech = "all", q = "", sort = "", dir = "asc", keys = null } = {}) {
+  const qLow = String(q || "").trim().toLowerCase();
+  const techLow = String(tech || "all").trim().toLowerCase();
+  const keySet = keys && keys.length ? new Set(keys) : null;
+
+  let list = leads.filter((l) => {
+    if (keySet && !keySet.has(l.key)) return false;
+    if (!keySet) {
+      if (state === "all") {
+        if (!isPendingLead(l)) return false;
+      } else if (state !== "any" && l.state !== state) {
+        return false;
+      }
+      if (opp === "wa_nosite" && !(!l.temSite && l.telefone)) return false;
+      if (opp === "email_nosite" && !(!l.temSite && l.email)) return false;
+      if (opp === "has_wa" && !l.telefone) return false;
+      if (opp === "has_email" && !l.email) return false;
+      if (opp === "nosite" && l.temSite) return false;
+      if (techLow && techLow !== "all") {
+        const tList = (l.tech || []).map((t) => String(t).toLowerCase());
+        if (techLow === "no_pixel") {
+          const hasTracking = tList.some((t) => t.includes("gtm") || t.includes("tag manager") || t.includes("meta pixel"));
+          if (!l.temSite || hasTracking) return false;
+        } else if (techLow === "gtm") {
+          if (!tList.some((t) => t.includes("gtm") || t.includes("tag manager"))) return false;
+        } else {
+          if (!tList.some((t) => t.includes(techLow))) return false;
+        }
+      }
+      if (qLow) {
+        const hay = `${l.nome || ""} ${l.nicho || ""} ${l.cidade || ""} ${l.email || ""} ${(l.tech || []).join(" ")}`.toLowerCase();
+        if (!hay.includes(qLow)) return false;
+      }
+    }
+    return true;
+  });
+
+  if (sort) {
+    const sdir = dir === "desc" ? -1 : 1;
+    const sortVal = (l) => {
+      if (sort === "score") return Number(l.score) || 0;
+      if (sort === "nome") return String(l.nome || "").toLowerCase();
+      if (sort === "nicho") return `${l.nicho || ""} ${l.cidade || ""}`.toLowerCase();
+      if (sort === "contatos") return `${l.telefone ? "2_" : (l.email ? "1_" : "0_")}${l.telefone || l.email || ""}`;
+      if (sort === "site") return `${l.temSite ? "2_" : "0_"}${String(l.site || "").toLowerCase()}`;
+      if (sort === "state" || sort === "status") return String(l.state || "").toLowerCase();
+      if (sort === "conversa") return Number(l.msgCount || 0);
+      if (sort === "previa") return l.previewUrl ? 1 : 0;
+      return "";
+    };
+    list = [...list].sort((a, b) => {
+      const va = sortVal(a);
+      const vb = sortVal(b);
+      if (typeof va === "number" && typeof vb === "number") return (va - vb) * sdir;
+      return String(va).localeCompare(String(vb), "pt-BR", { numeric: true }) * sdir;
+    });
+  }
+  return list;
+}
+
+function csvCell(v) {
+  const s = String(v ?? "");
+  return /[",\r\n;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
 export async function handleCrmRequest(req, res) {
   const url = new URL(req.url, "http://localhost");
   const path = url.pathname;
@@ -411,187 +700,89 @@ export async function handleCrmRequest(req, res) {
     return true;
   }
 
-  if (req.method === "GET" && path === "/api/crm/overview") {
-    const db = loadStatus();
-    let dbDirty = false;
-    const rawLeads = Object.entries(db.leads || {});
-    const counts = {
-      total: 0,
-      mapeado: 0,
-      na_fila: 0,
-      enviado: 0,
-      visualizado: 0,
-      respondeu: 0,
-      proposto: 0,
-      fechado: 0,
-      descartado: 0,
-    };
-    const byNiche = {};
-    const previewBase = (process.env.PREVIEW_BASE_URL || "/previa").replace(/\/$/, "");
-    const seenPhones = new Set();
-    const seenNames = new Set();
-
-    const leads = rawLeads.map(([key, l]) => {
-      const normPhone = normalizePhone(l.telefone);
-      const msgs = normPhone ? getConversation(normPhone) : [];
-      if (msgs.some((m) => m.role === "user") && ["na_fila", "enviado", "visualizado"].includes(l.state)) {
-        l.state = "respondeu";
-        db.leads[key].state = "respondeu";
-        dbDirty = true;
-      }
-      const st = l.state || "na_fila";
-      counts.total++;
-      if (st in counts) counts[st]++;
-      if (normPhone) seenPhones.add(normPhone.slice(-8));
-      seenNames.add(`${String(l.nome || "").toLowerCase().trim()}|${String(l.cidade || "").toLowerCase().trim()}`);
-
-      const nicho = l.nicho || "Outro";
-      if (!byNiche[nicho]) {
-        byNiche[nicho] = { nicho, total: 0, na_fila: 0, enviados: 0, respostas: 0, fechados: 0 };
-      }
-      byNiche[nicho].total++;
-      if (st === "na_fila") byNiche[nicho].na_fila++;
-      if (["enviado", "visualizado", "respondeu", "proposto", "fechado"].includes(st)) byNiche[nicho].enviados++;
-      if (["respondeu", "proposto", "fechado"].includes(st)) byNiche[nicho].respostas++;
-      if (st === "fechado") byNiche[nicho].fechados++;
-
-      const slug = `${l.id}-${slugify(l.nome)}`;
-      const igMatch = String(l.instagramUrl || l.site || "").match(/instagram\.com\/([a-zA-Z0-9._]+)/i);
-      const igHandle = l.instagram || (igMatch && !/^(p|reel|reels|stories|explore|accounts|tv)$/i.test(igMatch[1]) ? `@${igMatch[1]}` : "");
-      const igUrl = l.instagramUrl || (igHandle ? `https://www.instagram.com/${igHandle.replace(/^@/, "")}/` : "");
-
-      const emailStr = l.email || "";
-      const scored = computeProspectScore({
-        temSite: !!l.temSite,
-        telefone: normPhone,
-        email: emailStr,
-        avaliacoes: l.avaliacoes || 0,
-        notaGoogle: l.notaGoogle || 0,
-        siteAudit: l.siteAudit || null,
-      });
-
-      return {
-        key,
-        id: l.id,
-        nome: l.nome,
-        nicho,
-        nichoGrupo: detectNiche(nicho),
-        cidade: l.cidade,
-        telefone: normPhone,
-        email: emailStr,
-        instagram: igHandle,
-        instagramUrl: igUrl,
-        state: st,
-        score: scored.score,
-        oportunidade: scored.oportunidade,
-        canalIdeal: scored.canalIdeal,
-        avaliacoes: l.avaliacoes || 0,
-        notaGoogle: l.notaGoogle || 0,
-        temSite: !!l.temSite,
-        site: l.site || "",
-        siteAudit: l.siteAudit || null,
-        emailCadence: l.emailCadence || null,
-        foraDoMaps: !!l.foraDoMaps,
-        optanteMei: !!l.optanteMei,
-        cnpj: l.cnpj || "",
-        endereco: l.endereco || "",
-        emitido: l.emitido || "",
-        handoff: !!l.handoff,
-        msgCount: msgs.length,
-        lastMsgAt: msgs.length ? msgs[msgs.length - 1].at : null,
-        previewViews: l.previewViews || 0,
-        previewUrl: `${previewBase}/${slug}`,
-      };
+  if (req.method === "GET" && path === "/api/crm/export.csv") {
+    const base = await buildOverviewBase();
+    const keysParam = url.searchParams.get("keys") || "";
+    const keys = keysParam ? keysParam.split(",").map((s) => s.trim()).filter(Boolean) : null;
+    const filtered = filterAndSortLeads(base.leads, {
+      state: url.searchParams.get("state") || "all",
+      opp: url.searchParams.get("opp") || "all",
+      tech: url.searchParams.get("tech") || "all",
+      q: url.searchParams.get("q") || "",
+      sort: url.searchParams.get("sort") || "",
+      dir: url.searchParams.get("dir") || "asc",
+      keys,
     });
-
-    if (dbDirty) saveStatus(db);
-
-    const arch = loadArchiveRows();
-    const liveRows = await loadLiveJobRows();
-    let scrapIdx = 1;
-    for (const row of [...liveRows, ...(arch.rows || [])]) {
-      const normPhone = normalizePhone(row.phone);
-      const p8 = normPhone ? normPhone.slice(-8) : "";
-      const nameKey = `${String(row.title || "").toLowerCase().trim()}|${String(row.city || "").toLowerCase().trim()}`;
-      if ((p8 && seenPhones.has(p8)) || seenNames.has(nameKey)) continue;
-      if (p8) seenPhones.add(p8);
-      seenNames.add(nameKey);
-
-      const emailFirst = String(row.emails || "").split(/[;,]/)[0].trim();
-      const siteRaw = String(row.website || "").trim();
-      const igMatch = siteRaw.match(/instagram\.com\/([a-zA-Z0-9._]+)/i);
-      const igHandle = igMatch && !/^(p|reel|reels|stories|explore|accounts|tv)$/i.test(igMatch[1]) ? `@${igMatch[1]}` : "";
-      const igUrl = igHandle ? `https://www.instagram.com/${igHandle.replace(/^@/, "")}/` : "";
-      const isSocial = /instagram\.com|facebook\.com|linktr\.ee|wa\.me/i.test(siteRaw);
-      const temSite = !!siteRaw && !isSocial;
-
-      counts.total++;
-      counts.mapeado++;
-      const nicho = row.category || "Outro";
-      if (!byNiche[nicho]) byNiche[nicho] = { nicho, total: 0, na_fila: 0, enviados: 0, respostas: 0, fechados: 0 };
-      byNiche[nicho].total++;
-
-      const scored = computeProspectScore({
-        temSite,
-        telefone: normPhone,
-        email: emailFirst,
-        avaliacoes: row.reviews || 0,
-        notaGoogle: row.rating || 0,
-        siteAudit: null,
-      });
-
-      leads.push({
-        key: `scraped:${slugify(row.title)}:${scrapIdx++}`,
-        id: null,
-        nome: row.title,
-        nicho,
-        nichoGrupo: detectNiche(nicho),
-        cidade: row.city || "",
-        telefone: normPhone,
-        email: emailFirst,
-        instagram: igHandle,
-        instagramUrl: igUrl,
-        state: "mapeado",
-        score: scored.score,
-        oportunidade: scored.oportunidade,
-        canalIdeal: scored.canalIdeal,
-        avaliacoes: row.reviews || 0,
-        notaGoogle: row.rating || 0,
-        temSite,
-        site: temSite ? siteRaw : "",
-        siteAudit: null,
-        emailCadence: null,
-        emitido: "",
-        handoff: false,
-        msgCount: 0,
-        lastMsgAt: null,
-        previewUrl: "",
-        source: row.source || "Scrap",
-      });
+    const header = ["ID", "Empresa", "Nicho", "Cidade", "Telefone", "Email", "Site", "Instagram", "Tech", "Score", "Oportunidade", "Etapa", "Avaliacoes", "Nota", "Previa"];
+    const rows = [header.join(",")];
+    for (const l of filtered) {
+      rows.push([
+        l.id ?? "",
+        l.nome,
+        l.nicho,
+        l.cidade,
+        l.telefone,
+        l.email,
+        l.site,
+        l.instagram,
+        (l.tech || []).join(" | "),
+        l.score,
+        l.oportunidade,
+        l.state,
+        l.avaliacoes,
+        l.notaGoogle,
+        l.previewUrl,
+      ].map(csvCell).join(","));
     }
-
-    leads.sort((a, b) => {
-      const ta = a.lastMsgAt ? Date.parse(a.lastMsgAt) : 0;
-      const tb = b.lastMsgAt ? Date.parse(b.lastMsgAt) : 0;
-      if (tb !== ta) return tb - ta;
-      if ((b.score || 0) !== (a.score || 0)) return (b.score || 0) - (a.score || 0);
-      return (b.avaliacoes || 0) - (a.avaliacoes || 0);
+    const csv = "\uFEFF" + rows.join("\r\n");
+    const stamp = new Date().toISOString().slice(0, 10);
+    res.writeHead(200, {
+      "Content-Type": "text/csv; charset=utf-8",
+      "Content-Disposition": `attachment; filename="winshub-crm-${stamp}.csv"`,
     });
+    res.end(csv);
+    return true;
+  }
+
+  if (req.method === "GET" && path === "/api/crm/overview") {
+    const base = await buildOverviewBase();
+    const sp = url.searchParams;
+    const hasQuery = sp.has("limit") || sp.has("state") || sp.has("opp") || sp.has("tech") || sp.has("q") || sp.has("sort");
+    let outLeads = base.leads;
+    let totalFiltered = base.leads.length;
+    let hasMore = false;
+
+    if (hasQuery) {
+      const filtered = filterAndSortLeads(base.leads, {
+        state: sp.get("state") || "all",
+        opp: sp.get("opp") || "all",
+        tech: sp.get("tech") || "all",
+        q: sp.get("q") || "",
+        sort: sp.get("sort") || "",
+        dir: sp.get("dir") || "asc",
+      });
+      totalFiltered = filtered.length;
+      const offset = Math.max(0, Number(sp.get("offset")) || 0);
+      const limit = Math.min(500, Math.max(10, Number(sp.get("limit")) || 80));
+      outLeads = filtered.slice(offset, offset + limit);
+      hasMore = offset + outLeads.length < totalFiltered;
+    }
 
     const persistentLogs = readActivity(80);
     const mergedLogs = persistentLogs.length ? persistentLogs : workerState.logs;
-    const auditedCount = rawLeads.filter(([, l]) => !!l.siteAudit).length;
     const evoState = await getCachedEvoState();
 
     sendJsonGz(req, res, 200, {
-      counts,
+      counts: base.counts,
       daily: getDailyStats(),
-      byNiche: Object.values(byNiche).sort((a, b) => b.total - a.total),
+      byNiche: base.byNiche,
+      totalFiltered,
+      hasMore,
       agents: {
         evolution: evoState,
         webhook: "online",
         workerRunning: workerState.running,
-        auditedCount,
+        auditedCount: base.auditedCount,
         anthropic: getAnthropicUsage(),
       },
       worker: {
@@ -600,7 +791,7 @@ export async function handleCrmRequest(req, res) {
         lastExitCode: workerState.lastExitCode,
         logs: mergedLogs,
       },
-      leads,
+      leads: outLeads,
     });
     return true;
   }
@@ -1158,7 +1349,29 @@ Formato obrigatório:
           results.push({ ok: false, id: l.id, nome: l.nome, error: e.message });
         }
       }
-      if (!body.dryRun && results.some((r) => r.ok)) saveStatus(db);
+      if (!body.dryRun && targets.length) {
+        const updatedKeys = new Set(targets.map(([k]) => k));
+        patchStatus((fresh) => {
+          fresh.leads = fresh.leads || {};
+          for (const k of updatedKeys) {
+            if (!db.leads?.[k]) continue;
+            if (!fresh.leads[k]) {
+              fresh.leads[k] = db.leads[k];
+            } else {
+              if (db.leads[k].emailCadence) fresh.leads[k].emailCadence = db.leads[k].emailCadence;
+              if (db.leads[k].siteAudit && !fresh.leads[k].siteAudit) fresh.leads[k].siteAudit = db.leads[k].siteAudit;
+              if (db.leads[k].emailInvalido) {
+                fresh.leads[k].emailInvalido = true;
+                fresh.leads[k].motivoEmail = db.leads[k].motivoEmail;
+              }
+              if (db.leads[k].state === "enviado" && (!fresh.leads[k].state || fresh.leads[k].state === "mapeado" || fresh.leads[k].state === "na_fila")) {
+                fresh.leads[k].state = "enviado";
+                fresh.leads[k].sentAt = fresh.leads[k].sentAt || db.leads[k].sentAt;
+              }
+            }
+          }
+        });
+      }
       sendJson(res, 200, { ok: true, sent: results.filter((r) => r.ok).length, results });
     } catch (e) {
       sendJson(res, 500, { error: e.message });
@@ -1171,7 +1384,20 @@ Formato obrigatório:
       const body = await readJsonBody(req);
       const db = loadStatus();
       const results = await runDueEmailCadence(db, { limit: Number(body.limit) || 10, dryRun: !!body.dryRun });
-      if (!body.dryRun && results.some((r) => r.ok)) saveStatus(db);
+      if (!body.dryRun && results.some((r) => r.ok)) {
+        const okIds = new Set(results.filter((r) => r.ok).map((r) => r.id));
+        patchStatus((fresh) => {
+          for (const [k, l] of Object.entries(db.leads || {})) {
+            if (!okIds.has(l.id) || !fresh.leads?.[k]) continue;
+            if (l.emailCadence) fresh.leads[k].emailCadence = l.emailCadence;
+            if (l.siteAudit && !fresh.leads[k].siteAudit) fresh.leads[k].siteAudit = l.siteAudit;
+            if (l.state === "enviado" && (!fresh.leads[k].state || fresh.leads[k].state === "mapeado" || fresh.leads[k].state === "na_fila")) {
+              fresh.leads[k].state = "enviado";
+              fresh.leads[k].sentAt = fresh.leads[k].sentAt || l.sentAt;
+            }
+          }
+        });
+      }
       sendJson(res, 200, { ok: true, sent: results.filter((r) => r.ok).length, results });
     } catch (e) {
       sendJson(res, 500, { error: e.message });
@@ -1226,7 +1452,14 @@ Formato obrigatório:
         if (!lead) { sendJson(res, 404, { error: "Lead não encontrado" }); return true; }
         if (!lead.site) { sendJson(res, 400, { error: "Lead não possui site cadastrado" }); return true; }
         const audit = await applyAudit(body.key, lead);
-        saveStatus(db);
+        patchStatus((fresh) => {
+          if (!fresh.leads?.[body.key]) return false;
+          fresh.leads[body.key].siteAudit = audit;
+          if (!fresh.leads[body.key].instagram && audit.instagram) {
+            fresh.leads[body.key].instagram = audit.instagram;
+            fresh.leads[body.key].instagramUrl = audit.instagramUrl;
+          }
+        });
         pushLog(`[Audit] ${lead.nome}: ${audit.score}/100 (Seg ${audit.securityScore} · Qual ${audit.qualityScore})`);
         sendJson(res, 200, { ok: true, audit });
         return true;
@@ -1237,7 +1470,18 @@ Formato obrigatório:
       for (let i = 0; i < targets.length; i += 5) {
         await Promise.all(targets.slice(i, i + 5).map(([k, l]) => applyAudit(k, l)));
       }
-      saveStatus(db);
+      if (targets.length) {
+        patchStatus((fresh) => {
+          for (const [k, l] of targets) {
+            if (!fresh.leads?.[k]) continue;
+            fresh.leads[k].siteAudit = l.siteAudit;
+            if (!fresh.leads[k].instagram && l.instagram) {
+              fresh.leads[k].instagram = l.instagram;
+              fresh.leads[k].instagramUrl = l.instagramUrl;
+            }
+          }
+        });
+      }
       pushLog(`[Audit] ${targets.length} sites auditados em lote.`);
       sendJson(res, 200, { ok: true, auditedCount: targets.length });
     } catch (e) {
@@ -1254,8 +1498,10 @@ Formato obrigatório:
       if (!lead) { sendJson(res, 404, { error: "Lead não encontrado" }); return true; }
       if (!lead.site) { sendJson(res, 400, { error: "Lead não possui site cadastrado" }); return true; }
       const lighthouse = await runLighthouse(lead.site, lead.nome);
-      lead.lighthouse = lighthouse;
-      saveStatus(db);
+      patchStatus((fresh) => {
+        if (!fresh.leads?.[body.key]) return false;
+        fresh.leads[body.key].lighthouse = lighthouse;
+      });
       pushLog(`[Lighthouse] ${lead.nome}: Perf ${lighthouse.perf ?? "-"} · SEO ${lighthouse.seo ?? "-"}`);
       sendJson(res, 200, { ok: true, lighthouse });
     } catch (e) {

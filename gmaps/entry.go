@@ -271,6 +271,7 @@ func (e *Entry) CsvHeaders() []string {
 		"user_reviews",
 		"user_reviews_extended",
 		"emails",
+		"tech",
 	}
 }
 
@@ -312,6 +313,7 @@ func (e *Entry) CsvRow() []string {
 		stringify(e.UserReviews),
 		stringify(e.UserReviewsExtended),
 		stringSliceToString(e.Emails),
+		stringSliceToString(e.Tech),
 	}
 }
 

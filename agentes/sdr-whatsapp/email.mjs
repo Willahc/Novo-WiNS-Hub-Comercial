@@ -136,22 +136,46 @@ export async function sendMail({ to, subject, text, html, replyTo, attachments }
   return { messageId: info.messageId, accepted: info.accepted || [], savedToSent };
 }
 
+function escapeHtml(s) {
+  return String(s || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 function summarizeAuditForEmail(lead) {
-  const a = lead.audit || {};
+  const a = lead.siteAudit || lead.audit || {};
   const gaps = [];
-  if (!lead.site) {
+  if (!lead.site || !lead.temSite) {
     gaps.push("a empresa ainda não possui site próprio (aparece apenas no Google Maps)");
   } else {
-    if (a.nota !== undefined && a.nota !== null && a.nota < 70) {
-      gaps.push(`nota técnica mobile de ${a.nota}/100 no carregamento/estrutura`);
+    const score = a.score ?? a.nota;
+    if (score !== undefined && score !== null && score < 70) {
+      gaps.push(`nota técnica de ${score}/100 no carregamento e estrutura`);
     }
-    if (a.temGTM === false && a.temPixel === false) {
+    if (a.mobileScore !== undefined && a.mobileScore !== null && a.mobileScore < 70) {
+      gaps.push(`PageSpeed Mobile de ${a.mobileScore}/100${a.lcpSec != null ? ` (LCP ${a.lcpSec}s)` : ""}`);
+    }
+    const pixels = Array.isArray(a.pixels) ? a.pixels : null;
+    if (pixels) {
+      const hasGtm = pixels.some((p) => /tag manager|gtm/i.test(p));
+      const hasMeta = pixels.some((p) => /meta pixel/i.test(p));
+      if (!hasGtm && !hasMeta) {
+        gaps.push("ausência de Google Tag Manager e Meta Pixel (sem rastreamento de conversões)");
+      } else if (!hasMeta) {
+        gaps.push("ausência de Meta Pixel instalado para rastrear quem vem de anúncios");
+      }
+    } else if (a.temGTM === false && a.temPixel === false) {
       gaps.push("ausência de Google Tag Manager e Meta Pixel (sem rastreamento de conversões)");
     } else if (a.temPixel === false) {
       gaps.push("ausência de Meta Pixel instalado para rastrear quem vem de anúncios");
     }
-    if (a.whatsappOk === false) {
-      gaps.push("botão/link de agendamento no WhatsApp sem resposta direta");
+    if (a.whatsappBtn === false || a.whatsappOk === false) {
+      gaps.push("ausência de botão/link direto para o WhatsApp no site");
+    }
+    if (!gaps.length && Array.isArray(a.problems) && a.problems.length) {
+      gaps.push(a.problems[0].toLowerCase());
     }
   }
   if (!gaps.length) {
@@ -253,9 +277,10 @@ export async function sendLeadEmail(db, key, lead, { step, dryRun = false } = {}
   const currentStep = lead.emailCadence?.step || 0;
   const targetStep = Number(step) || Math.min(3, currentStep + 1);
 
-  if (!lead.audit && lead.site) {
+  if (!lead.siteAudit && lead.temSite && lead.site && !/instagram\.com|facebook\.com/i.test(lead.site)) {
     try {
-      lead.audit = await auditSite(lead.site);
+      const audited = await auditSite(lead.site, lead.nome);
+      if (!dryRun) lead.siteAudit = audited;
     } catch {}
   }
 
@@ -265,15 +290,16 @@ export async function sendLeadEmail(db, key, lead, { step, dryRun = false } = {}
     const qual = qualificarLead(lead);
     const pngPath = qual.usarPrevia ? capturePreviewPng(lead) : null;
     const attachments = pngPath ? [{ filename: "previa-site.png", path: pngPath, cid: "previa-site" }] : [];
-    const htmlBody = text.replace(/\n/g, "<br>") + (pngPath
-      ? `<br><br><div style="margin-top:12px"><a href="${previewUrl || "#"}" target="_blank" rel="noopener"><img src="cid:previa-site" alt="Prévia do site" style="max-width:560px;width:100%;border-radius:10px;border:1px solid #cbd5e1;display:block"></a></div>`
+    const safeHtmlText = escapeHtml(text).replace(/\n/g, "<br>");
+    const htmlBody = safeHtmlText + (pngPath
+      ? `<br><br><div style="margin-top:12px"><a href="${escapeHtml(previewUrl || "#")}" target="_blank" rel="noopener"><img src="cid:previa-site" alt="Prévia do site" style="max-width:560px;width:100%;border-radius:10px;border:1px solid #cbd5e1;display:block"></a></div>`
       : "");
     mailRes = await sendMail({ to, subject, text, html: htmlBody, attachments });
   }
 
   const now = Date.now();
   const nextDays = targetStep === 1 ? 3 : targetStep === 2 ? 4 : null;
-  const history = Array.isArray(lead.emailCadence?.history) ? lead.emailCadence.history : [];
+  const history = Array.isArray(lead.emailCadence?.history) ? [...lead.emailCadence.history] : [];
   history.push({
     step: targetStep,
     subject,
@@ -289,22 +315,17 @@ export async function sendLeadEmail(db, key, lead, { step, dryRun = false } = {}
       nextDueAt: nextDays ? now + nextDays * DAY_MS : null,
       history,
     };
-    if (lead.state === "na_fila") {
+    if (!lead.state || lead.state === "mapeado" || lead.state === "na_fila") {
       lead.state = "enviado";
       lead.sentAt = lead.sentAt || new Date(now).toISOString();
     }
     db.leads[key] = lead;
   }
 
-  logActivity({
-    type: "email_sent",
-    leadId: lead.id,
-    nome: lead.nome,
-    email: to,
-    step: targetStep,
-    subject,
-    dryRun: !!dryRun,
-  });
+  logActivity(
+    dryRun ? "Email-DryRun" : "Email",
+    `✉️ [E${targetStep}/3] ${lead.nome || key} (${to}) — ${subject}`
+  );
 
   return { ok: true, id: lead.id, nome: lead.nome, to, step: targetStep, subject, text, dryRun: !!dryRun, messageId: mailRes.messageId };
 }

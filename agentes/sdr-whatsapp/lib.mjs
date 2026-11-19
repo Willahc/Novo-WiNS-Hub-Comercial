@@ -33,14 +33,22 @@ export function readActivity(limit = 80) {
   }
 }
 
+export function todayBr() {
+  return new Date().toLocaleDateString("pt-BR", { timeZone: process.env.TZ || "America/Sao_Paulo" });
+}
+
+function getEvolutionBaseUrl() {
+  return (process.env.EVOLUTION_URL || process.env.EVOLUTION_API_URL || "http://127.0.0.1:8081").replace(/\/+$/, "");
+}
+
 export async function getEvolutionState() {
-  const url = process.env.EVOLUTION_API_URL || "http://127.0.0.1:8081";
+  const url = getEvolutionBaseUrl();
   const key = process.env.EVOLUTION_API_KEY || "";
   const inst = process.env.EVOLUTION_INSTANCE || "wins-comercial";
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), 2500);
   try {
-    const res = await fetch(`${url.replace(/\/$/, "")}/instance/connectionState/${inst}`, {
+    const res = await fetch(`${url}/instance/connectionState/${inst}`, {
       signal: ctrl.signal,
       headers: key ? { apikey: key } : {},
     });
@@ -89,19 +97,29 @@ export function loadStatus() {
 }
 
 export function saveStatus(db) {
-  const tmp = `${STATUS_PATH}.${process.pid}.${Date.now()}.tmp`;
+  const tmp = `${STATUS_PATH}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2, 7)}.tmp`;
   writeFileSync(tmp, JSON.stringify(db, null, 2), "utf8");
   renameSync(tmp, STATUS_PATH);
+}
+
+export function patchStatus(mutator) {
+  const fresh = loadStatus();
+  const res = mutator(fresh);
+  if (res !== false) saveStatus(fresh);
+  return fresh;
 }
 
 export function findLeadByPhone(db, phone) {
   const target = normalizePhone(phone);
   if (!target) return null;
+  const targetDdd = target.startsWith("55") && target.length >= 12 ? target.slice(2, 4) : "";
   for (const [key, lead] of Object.entries(db.leads || {})) {
     const leadPhone = normalizePhone(lead.telefone);
     if (!leadPhone) continue;
-    // Compara últimos 8 dígitos também para lidar com 9º dígito no WhatsApp
-    if (leadPhone === target || leadPhone.slice(-8) === target.slice(-8)) {
+    if (leadPhone === target) return { key, lead };
+    // Compara últimos 8 dígitos apenas quando o DDD coincide (trata 9º dígito sem colidir estados diferentes)
+    const leadDdd = leadPhone.startsWith("55") && leadPhone.length >= 12 ? leadPhone.slice(2, 4) : "";
+    if (leadPhone.slice(-8) === target.slice(-8) && (!targetDdd || !leadDdd || targetDdd === leadDdd)) {
       return { key, lead };
     }
   }
@@ -126,7 +144,7 @@ export function appendConversation(phone, role, content) {
 }
 
 export async function sendWhatsAppText(phone, text) {
-  const baseUrl = (process.env.EVOLUTION_URL || "http://127.0.0.1:8081").replace(/\/+$/, "");
+  const baseUrl = getEvolutionBaseUrl();
   const apiKey = process.env.EVOLUTION_API_KEY;
   const instance = process.env.EVOLUTION_INSTANCE || "wins-comercial";
   if (!apiKey) throw new Error("EVOLUTION_API_KEY não configurada no .env");
@@ -134,6 +152,7 @@ export async function sendWhatsAppText(phone, text) {
   const number = normalizePhone(phone);
   const res = await fetch(`${baseUrl}/message/sendText/${encodeURIComponent(instance)}`, {
     method: "POST",
+    signal: AbortSignal.timeout(15000),
     headers: {
       "Content-Type": "application/json",
       apikey: apiKey,
@@ -153,7 +172,7 @@ export async function sendWhatsAppText(phone, text) {
 }
 
 export async function sendWhatsAppMedia(phone, filePath, caption = "") {
-  const baseUrl = (process.env.EVOLUTION_URL || "http://127.0.0.1:8081").replace(/\/+$/, "");
+  const baseUrl = getEvolutionBaseUrl();
   const apiKey = process.env.EVOLUTION_API_KEY;
   const instance = process.env.EVOLUTION_INSTANCE || "wins-comercial";
   if (!apiKey) throw new Error("EVOLUTION_API_KEY não configurada no .env");
@@ -162,6 +181,7 @@ export async function sendWhatsAppMedia(phone, filePath, caption = "") {
   const media = readFileSync(filePath).toString("base64");
   const res = await fetch(`${baseUrl}/message/sendMedia/${encodeURIComponent(instance)}`, {
     method: "POST",
+    signal: AbortSignal.timeout(25000),
     headers: {
       "Content-Type": "application/json",
       apikey: apiKey,
@@ -230,8 +250,86 @@ export function capturePreviewPng(lead) {
   }
 }
 
+export async function fetchWhatsAppMediaBase64(key, message) {
+  const baseUrl = getEvolutionBaseUrl();
+  const apiKey = process.env.EVOLUTION_API_KEY;
+  const instance = process.env.EVOLUTION_INSTANCE || "wins-comercial";
+  if (!apiKey || !key) return null;
+
+  const res = await fetch(`${baseUrl}/chat/getBase64FromMediaMessage/${encodeURIComponent(instance)}`, {
+    method: "POST",
+    signal: AbortSignal.timeout(15000),
+    headers: { "Content-Type": "application/json", apikey: apiKey },
+    body: JSON.stringify({ message: { key, message }, convertToMp4: false }),
+  });
+  if (!res.ok) return null;
+  const data = await res.json().catch(() => null);
+  if (!data?.base64) return null;
+  return {
+    base64: String(data.base64).replace(/^data:[^;]+;base64,/, ""),
+    mimetype: data.mimetype || message?.audioMessage?.mimetype || "audio/ogg",
+  };
+}
+
+export async function transcribeAudioBase64(base64, mimetype = "audio/ogg") {
+  if (!base64) return null;
+  const cleanMime = String(mimetype || "audio/ogg").split(";")[0].trim();
+  const ext = cleanMime.includes("mp4") ? "m4a" : cleanMime.includes("mpeg") || cleanMime.includes("mp3") ? "mp3" : "ogg";
+  const buf = Buffer.from(base64, "base64");
+
+  // 1. Groq Whisper (ultra rápido) ou OpenAI Whisper
+  const whisperKey = process.env.GROQ_API_KEY || process.env.OPENAI_API_KEY;
+  if (whisperKey) {
+    const isGroq = Boolean(process.env.GROQ_API_KEY);
+    const endpoint = isGroq
+      ? "https://api.groq.com/openai/v1/audio/transcriptions"
+      : "https://api.openai.com/v1/audio/transcriptions";
+    const model = isGroq ? "whisper-large-v3-turbo" : "whisper-1";
+    const form = new FormData();
+    form.append("file", new Blob([buf], { type: cleanMime }), `audio.${ext}`);
+    form.append("model", model);
+    form.append("language", "pt");
+    const res = await fetch(endpoint, {
+      method: "POST",
+      signal: AbortSignal.timeout(25000),
+      headers: { Authorization: `Bearer ${whisperKey}` },
+      body: form,
+    });
+    if (res.ok) {
+      const d = await res.json().catch(() => null);
+      if (d?.text && String(d.text).trim()) return String(d.text).trim();
+    }
+  }
+
+  // 2. Gemini Flash (nativo com áudio inline base64)
+  const geminiKey = process.env.GEMINI_API_KEY;
+  if (geminiKey) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(geminiKey)}`;
+    const res = await fetch(url, {
+      method: "POST",
+      signal: AbortSignal.timeout(25000),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{
+          parts: [
+            { text: "Transcreva este áudio do WhatsApp em português do Brasil exatamente como foi falado. Retorne apenas a transcrição." },
+            { inline_data: { mime_type: cleanMime, data: base64 } },
+          ],
+        }],
+      }),
+    });
+    if (res.ok) {
+      const d = await res.json().catch(() => null);
+      const txt = d?.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join(" ").trim();
+      if (txt) return txt;
+    }
+  }
+
+  return null;
+}
+
 export async function checkWhatsApp(phone) {
-  const baseUrl = (process.env.EVOLUTION_URL || "http://127.0.0.1:8081").replace(/\/+$/, "");
+  const baseUrl = getEvolutionBaseUrl();
   const apiKey = process.env.EVOLUTION_API_KEY;
   const instance = process.env.EVOLUTION_INSTANCE || "wins-comercial";
   const number = normalizePhone(phone);
@@ -239,6 +337,7 @@ export async function checkWhatsApp(phone) {
 
   const res = await fetch(`${baseUrl}/chat/whatsappNumbers/${encodeURIComponent(instance)}`, {
     method: "POST",
+    signal: AbortSignal.timeout(8000),
     headers: { "Content-Type": "application/json", apikey: apiKey },
     body: JSON.stringify({ numbers: [number] }),
   });
@@ -337,7 +436,7 @@ function estimateClaudeCostUsd(model, inTok, outTok) {
 }
 
 export function getAnthropicUsage() {
-  const hoje = new Date().toLocaleDateString("pt-BR");
+  const hoje = todayBr();
   const empty = { calls: 0, inputTokens: 0, outputTokens: 0, costUsd: 0 };
   const def = { data: hoje, today: { ...empty }, total: { ...empty }, model: process.env.CLAUDE_MODEL || "claude-sonnet-4-20250514", lastCallAt: null, lastError: "" };
   if (!existsSync(ANTHROPIC_USAGE_PATH)) return def;
@@ -356,7 +455,7 @@ export function getAnthropicUsage() {
 
 function recordAnthropicUsage({ model, inputTokens = 0, outputTokens = 0, error = "" }) {
   try {
-    const hoje = new Date().toLocaleDateString("pt-BR");
+    const hoje = todayBr();
     const u = getAnthropicUsage();
     u.data = hoje;
     u.model = model || u.model;
@@ -390,6 +489,7 @@ export async function callClaude({ system, messages, maxTokens = 450, model: cus
 
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
+    signal: AbortSignal.timeout(35000),
     headers: {
       "Content-Type": "application/json",
       "x-api-key": apiKey,
@@ -426,6 +526,7 @@ export async function notifyTelegram(text) {
   }
   const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
     method: "POST",
+    signal: AbortSignal.timeout(10000),
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       chat_id: chatId,

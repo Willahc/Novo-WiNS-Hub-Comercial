@@ -51,11 +51,30 @@ const AMOSTRA_MINIMA = 5; // enviados por nicho antes de o aprendizado valer
 
 const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
+function pluralizarNicho(nicho) {
+  const s = String(nicho || "empresa").trim().toLowerCase();
+  if (!s) return "empresas";
+  const parts = s.split(/\s+/);
+  // Se for expressão composta (ex: "academia de artes marciais", "clínica de estética"), pluraliza o núcleo antes de "de/da/do"
+  const prepIdx = parts.findIndex((p) => p === "de" || p === "da" || p === "do" || p === "para");
+  if (prepIdx > 0) {
+    const head = parts[prepIdx - 1];
+    if (!head.endsWith("s")) {
+      parts[prepIdx - 1] = head.endsWith("ão") ? `${head.slice(0, -2)}ões` : head.endsWith("l") ? `${head.slice(0, -1)}is` : `${head}s`;
+    }
+    return parts.join(" ");
+  }
+  if (s.endsWith("s")) return s;
+  if (s.endsWith("ão")) return `${s.slice(0, -2)}ões`;
+  if (s.endsWith("r") || s.endsWith("z")) return `${s}es`;
+  return `${s}s`;
+}
+
 const MENSAGENS = {
   whatsapp: {
     A: (l, en) =>
       `Oi! Tudo bem?\n\n` +
-      `Fui pesquisando ${l.nicho.toLowerCase()}s aqui em ${l.cidade} e ` +
+      `Fui pesquisando ${pluralizarNicho(l.nicho)} aqui em ${l.cidade} e ` +
       `encontrei o ${l.nome} — ${l.avaliacoes} avaliações no Google, parabéns!\n\n` +
       `${cap(l.queixa)}\n\n` +
       (en?.achado ? `${en.achado}\n\n` : "") +

@@ -956,7 +956,7 @@
 
     // ---------- CRM Nativo ----------
 
-    var crmState = { data: null, filter: 'all', selectedKeys: {}, sortKey: null, sortDir: 'asc', loading: false, visibleLimit: 80, lastDigest: '' };
+    var crmState = { data: null, filter: 'all', selectedKeys: {}, sortKey: null, sortDir: 'asc', loading: false, visibleLimit: 80, lastDigest: '', reqSeq: 0 };
 
     function crmSortVal(l, key) {
         if (key === 'score') return Number(l.score) || 0;
@@ -977,6 +977,26 @@
         return Object.keys(crmState.selectedKeys).filter(function (k) { return !!crmState.selectedKeys[k]; });
     }
 
+    function crmQueryParams(includeLimit) {
+        var params = new URLSearchParams();
+        params.set('state', crmState.filter || 'all');
+        var opp = $('crmOppFilter') ? $('crmOppFilter').value : 'all';
+        if (opp && opp !== 'all') params.set('opp', opp);
+        var tech = $('crmTechFilter') ? $('crmTechFilter').value : 'all';
+        if (tech && tech !== 'all') params.set('tech', tech);
+        var q = $('crmSearch') ? ($('crmSearch').value || '').trim() : '';
+        if (q) params.set('q', q);
+        if (crmState.sortKey) {
+            params.set('sort', crmState.sortKey);
+            params.set('dir', crmState.sortDir || 'asc');
+        }
+        if (includeLimit !== false) {
+            params.set('limit', String(crmState.visibleLimit || 80));
+            params.set('offset', '0');
+        }
+        return params.toString();
+    }
+
     function crmDigest(d) {
         if (!d) return '';
         var c = d.counts || {};
@@ -984,20 +1004,24 @@
         var logs = (d.worker && d.worker.logs) || [];
         var top = leads[0];
         return [
-            c.total || 0, c.mapeado || 0, c.na_fila || 0, c.enviado || 0,
+            c.total || 0, c.pending || 0, c.mapeado || 0, c.na_fila || 0, c.enviado || 0,
             c.respondeu || 0, c.proposto || 0, c.fechado || 0, c.descartado || 0,
-            leads.length, top ? (top.key + ':' + (top.lastMsgAt || '') + ':' + (top.msgCount || 0) + ':' + (top.previewViews || 0)) : '',
+            d.totalFiltered || 0, leads.length,
+            top ? (top.key + ':' + (top.lastMsgAt || '') + ':' + (top.msgCount || 0) + ':' + (top.previewViews || 0)) : '',
             d.worker && d.worker.running ? 1 : 0, logs.length, logs.length ? logs[logs.length - 1] : '',
             d.agents && d.agents.evolution || ''
         ].join('|');
     }
 
     function loadCrm(isPoll) {
-        if (!$('crmView') || crmState.loading) return Promise.resolve();
+        if (!$('crmView')) return Promise.resolve();
+        if (isPoll && crmState.loading) return Promise.resolve();
         crmState.loading = true;
-        return fetch('/api/crm/overview')
+        var seq = ++crmState.reqSeq;
+        return fetch('/api/crm/overview?' + crmQueryParams(true))
             .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function (d) {
+                if (seq !== crmState.reqSeq) return;
                 var dig = crmDigest(d);
                 if (isPoll && dig === crmState.lastDigest) return;
                 crmState.lastDigest = dig;
@@ -1010,7 +1034,7 @@
                 if ($('crmMeta')) $('crmMeta').textContent = 'Agente offline ou aguardando conexão.';
             })
             .finally(function () {
-                crmState.loading = false;
+                if (seq === crmState.reqSeq) crmState.loading = false;
             });
     }
 
@@ -1088,7 +1112,7 @@
             return '<tr><td>' + esc(n.nicho) + '</td><td class="num">' + n.na_fila + '</td><td class="num">' + n.enviados + '</td><td class="num">' + n.respostas + '</td><td class="num">' + n.fechados + '</td></tr>';
         }).join('');
 
-        var pendingCount = (d.leads || []).filter(isPendingLead).length;
+        var pendingCount = typeof c.pending === 'number' ? c.pending : (d.leads || []).filter(isPendingLead).length;
         var ST_LABELS = { all: 'Todos', mapeado: 'Scrap', na_fila: 'Na fila', enviado: 'Enviado', respondeu: 'Respondeu', proposto: 'Proposto', fechado: 'Fechado', descartado: 'Descartado' };
         Array.prototype.forEach.call(document.querySelectorAll('#crmFilters button[data-st]'), function (b) {
             var st = b.getAttribute('data-st');
@@ -1106,23 +1130,14 @@
             });
         }
 
-        var list = (d.leads || []).filter(crmMatchesFilter);
-
-        if (crmState.sortKey) {
-            var sk = crmState.sortKey;
-            var sdir = crmState.sortDir === 'asc' ? 1 : -1;
-            list.sort(function (a, b) {
-                var va = crmSortVal(a, sk);
-                var vb = crmSortVal(b, sk);
-                if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * sdir;
-                return String(va).localeCompare(String(vb), 'pt-BR', { numeric: true }) * sdir;
-            });
-        }
+        var list = d.leads || [];
+        var totalFiltered = typeof d.totalFiltered === 'number' ? d.totalFiltered : list.length;
 
         var pickedCount = selectedCrmKeys().length;
         $('crmStart').textContent = pickedCount ? 'Start WhatsApp (' + pickedCount + ')' : 'Start WhatsApp';
         $('crmDryRun').textContent = pickedCount ? 'Simular (' + pickedCount + ')' : 'Simular';
         if ($('crmEmailBtn')) $('crmEmailBtn').textContent = pickedCount ? 'Enviar E-mail (' + pickedCount + ')' : 'Enviar E-mail';
+        if ($('crmExportCsv')) $('crmExportCsv').textContent = pickedCount ? 'Exportar CSV (' + pickedCount + ')' : 'Exportar CSV';
         if ($('crmSelectAll')) {
             var visChecked = list.filter(function (l) { return !!crmState.selectedKeys[l.key]; }).length;
             $('crmSelectAll').checked = list.length > 0 && visChecked === list.length;
@@ -1142,7 +1157,7 @@
             if (d.length === 10) return '(' + d.slice(0, 2) + ') ' + d.slice(2, 6) + '-' + d.slice(6);
             return raw;
         };
-        var pageList = list.slice(0, crmState.visibleLimit || 80);
+        var pageList = list;
         var html = pageList.map(function (l) {
             var checked = crmState.selectedKeys[l.key] ? ' checked' : '';
             var stLabel = ST_LABELS[l.state] || l.state;
@@ -1173,6 +1188,11 @@
             if (l.lighthouse && l.lighthouse.perf != null) {
                 metaBadges.push('<span class="crm-meta-chip' + (l.lighthouse.perf < 70 ? ' warn' : ' ok') + '">LH ' + l.lighthouse.perf + '/100</span>');
             }
+            if (Array.isArray(l.tech) && l.tech.length) {
+                l.tech.slice(0, 4).forEach(function (t) {
+                    metaBadges.push('<span class="crm-meta-chip">⚙ ' + esc(t) + '</span>');
+                });
+            }
             var chatAttrs = 'data-chat="' + esc(l.telefone) + '" data-key="' + esc(l.key) + '" data-nome="' + esc(l.nome) + '" data-nicho="' + esc(l.nicho) + '"';
             return '<tr>' +
                 '<td class="chk-col"><input type="checkbox" class="crm-chk" data-key="' + esc(l.key) + '"' + checked + '></td>' +
@@ -1189,25 +1209,35 @@
                 '</select></td>' +
                 '</tr>';
         }).join('');
-        if (list.length > pageList.length) {
-            html += '<tr class="crm-more-row"><td colspan="10" style="text-align:center;padding:10px;"><button type="button" class="btn-sec" id="crmShowMore">Mostrar mais (+80) — exibindo ' + pageList.length + ' de ' + list.length + '</button></td></tr>';
+        if (d.hasMore || totalFiltered > pageList.length) {
+            html += '<tr class="crm-more-row"><td colspan="10" style="text-align:center;padding:10px;"><button type="button" class="btn-sec" id="crmShowMore">Mostrar mais (+80) — exibindo ' + pageList.length + ' de ' + totalFiltered + '</button></td></tr>';
         }
         $('crmRows').innerHTML = html;
     }
 
     if ($('crmFilters')) {
-        segmented('crmFilters', 'data-st', function (v) { crmState.filter = v; crmState.visibleLimit = 80; renderCrm(); });
+        segmented('crmFilters', 'data-st', function (v) { crmState.filter = v; crmState.visibleLimit = 80; loadCrm(false); });
         var crmSearchTimer = null;
         $('crmSearch').addEventListener('input', function () {
             clearTimeout(crmSearchTimer);
-            crmSearchTimer = setTimeout(function () { crmState.visibleLimit = 80; renderCrm(); }, 150);
+            crmSearchTimer = setTimeout(function () { crmState.visibleLimit = 80; loadCrm(false); }, 180);
         });
-        if ($('crmOppFilter')) $('crmOppFilter').addEventListener('change', function () { crmState.visibleLimit = 80; renderCrm(); });
+        if ($('crmOppFilter')) $('crmOppFilter').addEventListener('change', function () { crmState.visibleLimit = 80; loadCrm(false); });
+        if ($('crmTechFilter')) $('crmTechFilter').addEventListener('change', function () { crmState.visibleLimit = 80; loadCrm(false); });
+        if ($('crmExportCsv')) {
+            $('crmExportCsv').addEventListener('click', function () {
+                var picked = selectedCrmKeys();
+                var qs = crmQueryParams(false);
+                if (picked.length) qs += '&keys=' + encodeURIComponent(picked.join(','));
+                window.location.href = '/api/crm/export.csv?' + qs;
+                toast(picked.length ? ('Exportando ' + picked.length + ' leads selecionados...') : 'Exportando CSV filtrado...');
+            });
+        }
 
         $('crmRows').addEventListener('click', function (e) {
             if (e.target && e.target.id === 'crmShowMore') {
                 crmState.visibleLimit = (crmState.visibleLimit || 80) + 80;
-                renderCrm();
+                loadCrm(false);
                 return;
             }
             var btn = e.target.closest('[data-chat]');
@@ -1255,7 +1285,7 @@
                 var on = this.checked;
                 var d = crmState.data;
                 if (!d) return;
-                (d.leads || []).filter(crmMatchesFilter).forEach(function (l) {
+                (d.leads || []).forEach(function (l) {
                     if (on) crmState.selectedKeys[l.key] = true;
                     else delete crmState.selectedKeys[l.key];
                 });
@@ -1274,7 +1304,7 @@
                     crmState.sortKey = key;
                     crmState.sortDir = (key === 'score' || key === 'conversa' || key === 'previa') ? 'desc' : 'asc';
                 }
-                renderCrm();
+                loadCrm(false);
             });
         }
 

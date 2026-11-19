@@ -8,7 +8,7 @@ import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import {
   loadEnv, loadStatus, saveStatus, normalizePhone, checkWhatsApp, qualificarLead,
   appendConversation, sendWhatsAppText, sendWhatsAppMedia, capturePreviewPng, callClaude,
-  DAILY_LOG_PATH, sleep, randomBetween,
+  DAILY_LOG_PATH, todayBr, sleep, randomBetween,
 } from "./lib.mjs";
 import { slugify } from "../entrega/previas/templates.mjs";
 
@@ -38,7 +38,7 @@ function emHorarioComercial() {
 }
 
 function getDisparosHoje() {
-  const hoje = new Date().toLocaleDateString("pt-BR");
+  const hoje = todayBr();
   if (!existsSync(DAILY_LOG_PATH)) return { data: hoje, count: 0 };
   const log = JSON.parse(readFileSync(DAILY_LOG_PATH, "utf8"));
   if (log.data !== hoje) return { data: hoje, count: 0 };
@@ -232,10 +232,10 @@ async function main() {
         if (fresh.leads?.[key]) {
           if (tipo === "followup") {
             fresh.leads[key].followup_count = (fresh.leads[key].followup_count || 0) + 1;
-            fresh.leads[key].followup_em = new Date().toLocaleDateString("pt-BR");
+            fresh.leads[key].followup_em = todayBr();
           } else {
             if (fresh.leads[key].state === "na_fila") fresh.leads[key].state = "enviado";
-            fresh.leads[key].emitido = new Date().toLocaleDateString("pt-BR");
+            fresh.leads[key].emitido = todayBr();
             fresh.leads[key].msg_enviada = texto;
           }
           saveStatus(fresh);

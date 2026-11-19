@@ -204,6 +204,7 @@
                 </div>
                 <div class="board-actions">
                     <label class="ghost" style="cursor:pointer;display:inline-flex;align-items:center">Importar CSV<input type="file" id="crmCsvInput" accept=".csv" hidden></label>
+                    <button type="button" class="ghost" id="crmExportCsv">Exportar CSV</button>
                     <button type="button" class="ghost" id="crmAuditAll">Auditar Sites</button>
                     <button type="button" class="ghost" id="crmDryRun">Simular</button>
                     <button type="button" class="ghost" id="crmEmailBtn">Enviar E-mail</button>
@@ -241,10 +242,22 @@
                 <select id="crmOppFilter" class="dash-select" aria-label="Filtrar por oportunidade">
                     <option value="all">Todas oportunidades</option>
                     <option value="wa_nosite">🔥 WhatsApp + Sem site</option>
-                    <option value="email_nosite">✉️ Só E-mail + Sem site</option>
+                    <option value="email_nosite">✉️ E-mail + Sem site</option>
                     <option value="has_wa">📱 Com WhatsApp</option>
                     <option value="has_email">✉️ Com E-mail</option>
                     <option value="nosite">🌐 Sem site próprio</option>
+                </select>
+                <select id="crmTechFilter" class="dash-select" aria-label="Filtrar por tecnologia">
+                    <option value="all">Todas tecnologias</option>
+                    <option value="WordPress">WordPress</option>
+                    <option value="Wix">Wix</option>
+                    <option value="Shopify">Shopify</option>
+                    <option value="Nuvemshop">Nuvemshop</option>
+                    <option value="Webflow">Webflow</option>
+                    <option value="RD Station">RD Station</option>
+                    <option value="GTM">Google Tag Manager</option>
+                    <option value="Meta Pixel">Meta Pixel</option>
+                    <option value="no_pixel">Site sem Pixel/GTM</option>
                 </select>
                 <label class="field slim">
                     <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
