@@ -956,7 +956,7 @@
 
     // ---------- CRM Nativo ----------
 
-    var crmState = { data: null, filter: 'all', selectedKeys: {}, sortKey: null, sortDir: 'asc' };
+    var crmState = { data: null, filter: 'all', selectedKeys: {}, sortKey: null, sortDir: 'asc', loading: false, visibleLimit: 80, lastDigest: '' };
 
     function crmSortVal(l, key) {
         if (key === 'score') return Number(l.score) || 0;
@@ -977,14 +977,62 @@
         return Object.keys(crmState.selectedKeys).filter(function (k) { return !!crmState.selectedKeys[k]; });
     }
 
-    function loadCrm() {
-        if (!$('crmView')) return Promise.resolve();
+    function crmDigest(d) {
+        if (!d) return '';
+        var c = d.counts || {};
+        var leads = d.leads || [];
+        var logs = (d.worker && d.worker.logs) || [];
+        var top = leads[0];
+        return [
+            c.total || 0, c.mapeado || 0, c.na_fila || 0, c.enviado || 0,
+            c.respondeu || 0, c.proposto || 0, c.fechado || 0, c.descartado || 0,
+            leads.length, top ? (top.key + ':' + (top.lastMsgAt || '') + ':' + (top.msgCount || 0) + ':' + (top.previewViews || 0)) : '',
+            d.worker && d.worker.running ? 1 : 0, logs.length, logs.length ? logs[logs.length - 1] : '',
+            d.agents && d.agents.evolution || ''
+        ].join('|');
+    }
+
+    function loadCrm(isPoll) {
+        if (!$('crmView') || crmState.loading) return Promise.resolve();
+        crmState.loading = true;
         return fetch('/api/crm/overview')
             .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-            .then(function (d) { crmState.data = d; renderCrm(); })
+            .then(function (d) {
+                var dig = crmDigest(d);
+                if (isPoll && dig === crmState.lastDigest) return;
+                crmState.lastDigest = dig;
+                crmState.data = d;
+                var activeEl = document.activeElement;
+                var editingSelect = isPoll && activeEl && activeEl.closest && activeEl.closest('#crmRows select');
+                if (!editingSelect) renderCrm();
+            })
             .catch(function () {
                 if ($('crmMeta')) $('crmMeta').textContent = 'Agente offline ou aguardando conexão.';
+            })
+            .finally(function () {
+                crmState.loading = false;
             });
+    }
+
+    function isPendingLead(l) {
+        return (!l.state || l.state === 'mapeado') && !l.emailCadence;
+    }
+
+    function crmMatchesFilter(l) {
+        if (crmState.filter === 'all') {
+            if (!isPendingLead(l)) return false;
+        } else if (l.state !== crmState.filter) {
+            return false;
+        }
+        var opp = $('crmOppFilter') ? $('crmOppFilter').value : 'all';
+        if (opp === 'wa_nosite' && !(!l.temSite && l.telefone)) return false;
+        if (opp === 'email_nosite' && !(!l.temSite && l.email)) return false;
+        if (opp === 'has_wa' && !l.telefone) return false;
+        if (opp === 'has_email' && !l.email) return false;
+        if (opp === 'nosite' && l.temSite) return false;
+        var q = ($('crmSearch').value || '').trim().toLowerCase();
+        if (q && (l.nome + ' ' + l.nicho + ' ' + l.cidade + ' ' + (l.email || '')).toLowerCase().indexOf(q) < 0) return false;
+        return true;
     }
 
     function renderCrm() {
@@ -1040,10 +1088,11 @@
             return '<tr><td>' + esc(n.nicho) + '</td><td class="num">' + n.na_fila + '</td><td class="num">' + n.enviados + '</td><td class="num">' + n.respostas + '</td><td class="num">' + n.fechados + '</td></tr>';
         }).join('');
 
+        var pendingCount = (d.leads || []).filter(isPendingLead).length;
         var ST_LABELS = { all: 'Todos', mapeado: 'Scrap', na_fila: 'Na fila', enviado: 'Enviado', respondeu: 'Respondeu', proposto: 'Proposto', fechado: 'Fechado', descartado: 'Descartado' };
         Array.prototype.forEach.call(document.querySelectorAll('#crmFilters button[data-st]'), function (b) {
             var st = b.getAttribute('data-st');
-            var cnt = st === 'all' ? (c.total || 0) : (c[st] || 0);
+            var cnt = st === 'all' ? pendingCount : (c[st] || 0);
             b.textContent = (ST_LABELS[st] || st) + ' (' + cnt + ')';
         });
 
@@ -1057,18 +1106,7 @@
             });
         }
 
-        var q = ($('crmSearch').value || '').trim().toLowerCase();
-        var opp = $('crmOppFilter') ? $('crmOppFilter').value : 'all';
-        var list = (d.leads || []).filter(function (l) {
-            if (crmState.filter !== 'all' && l.state !== crmState.filter) return false;
-            if (opp === 'wa_nosite' && !(!l.temSite && l.telefone)) return false;
-            if (opp === 'email_nosite' && !(!l.temSite && !l.telefone && l.email)) return false;
-            if (opp === 'has_wa' && !l.telefone) return false;
-            if (opp === 'has_email' && !l.email) return false;
-            if (opp === 'nosite' && l.temSite) return false;
-            if (q && (l.nome + ' ' + l.nicho + ' ' + l.cidade + ' ' + (l.email || '')).toLowerCase().indexOf(q) < 0) return false;
-            return true;
-        });
+        var list = (d.leads || []).filter(crmMatchesFilter);
 
         if (crmState.sortKey) {
             var sk = crmState.sortKey;
@@ -1097,7 +1135,15 @@
         }
 
         var ST_LIST = ['mapeado', 'na_fila', 'enviado', 'respondeu', 'proposto', 'fechado', 'descartado'];
-        $('crmRows').innerHTML = list.map(function (l) {
+        var fmtPhone = function (raw) {
+            var d = String(raw || '').replace(/\D/g, '');
+            if (d.indexOf('55') === 0 && d.length >= 12) d = d.slice(2);
+            if (d.length === 11) return '(' + d.slice(0, 2) + ') ' + d.slice(2, 7) + '-' + d.slice(7);
+            if (d.length === 10) return '(' + d.slice(0, 2) + ') ' + d.slice(2, 6) + '-' + d.slice(6);
+            return raw;
+        };
+        var pageList = list.slice(0, crmState.visibleLimit || 80);
+        var html = pageList.map(function (l) {
             var checked = crmState.selectedKeys[l.key] ? ' checked' : '';
             var stLabel = ST_LABELS[l.state] || l.state;
             var sc = Number(l.score) || 0;
@@ -1107,13 +1153,6 @@
             var igHandle = l.instagram || instagramHandle(siteStr);
             var igUrl = l.instagramUrl || (instagramHandle(siteStr) ? siteStr : '');
             var contactParts = [];
-            var fmtPhone = function (raw) {
-                var d = String(raw || '').replace(/\D/g, '');
-                if (d.indexOf('55') === 0 && d.length >= 12) d = d.slice(2);
-                if (d.length === 11) return '(' + d.slice(0, 2) + ') ' + d.slice(2, 7) + '-' + d.slice(7);
-                if (d.length === 10) return '(' + d.slice(0, 2) + ') ' + d.slice(2, 6) + '-' + d.slice(6);
-                return raw;
-            };
             if (l.telefone) contactParts.push('<a class="t-site" href="https://wa.me/' + esc(l.telefone) + '" target="_blank" rel="noopener">📱 ' + esc(fmtPhone(l.telefone)) + '</a>');
             if (l.email) contactParts.push('<div class="t-cat">✉️ ' + esc(l.email) + (l.emailCadence ? ' (E' + l.emailCadence.step + '/3)' : '') + '</div>');
             if (igHandle) contactParts.push('<div><a class="t-site" href="' + esc(igUrl) + '" target="_blank" rel="noopener">' + esc(igHandle) + '</a></div>');
@@ -1150,17 +1189,27 @@
                 '</select></td>' +
                 '</tr>';
         }).join('');
+        if (list.length > pageList.length) {
+            html += '<tr class="crm-more-row"><td colspan="10" style="text-align:center;padding:10px;"><button type="button" class="btn-sec" id="crmShowMore">Mostrar mais (+80) — exibindo ' + pageList.length + ' de ' + list.length + '</button></td></tr>';
+        }
+        $('crmRows').innerHTML = html;
     }
 
     if ($('crmFilters')) {
-        setInterval(function () {
-            if (state.view === 'crm') loadCrm();
-        }, 5000);
-        segmented('crmFilters', 'data-st', function (v) { crmState.filter = v; renderCrm(); });
-        $('crmSearch').addEventListener('input', renderCrm);
-        if ($('crmOppFilter')) $('crmOppFilter').addEventListener('change', renderCrm);
+        segmented('crmFilters', 'data-st', function (v) { crmState.filter = v; crmState.visibleLimit = 80; renderCrm(); });
+        var crmSearchTimer = null;
+        $('crmSearch').addEventListener('input', function () {
+            clearTimeout(crmSearchTimer);
+            crmSearchTimer = setTimeout(function () { crmState.visibleLimit = 80; renderCrm(); }, 150);
+        });
+        if ($('crmOppFilter')) $('crmOppFilter').addEventListener('change', function () { crmState.visibleLimit = 80; renderCrm(); });
 
         $('crmRows').addEventListener('click', function (e) {
+            if (e.target && e.target.id === 'crmShowMore') {
+                crmState.visibleLimit = (crmState.visibleLimit || 80) + 80;
+                renderCrm();
+                return;
+            }
             var btn = e.target.closest('[data-chat]');
             if (!btn) return;
             var phone = btn.getAttribute('data-chat');
@@ -1206,19 +1255,7 @@
                 var on = this.checked;
                 var d = crmState.data;
                 if (!d) return;
-                var ST_LABELS = { all: 'Todos', mapeado: 'Scrap', na_fila: 'Na fila', enviado: 'Enviado', respondeu: 'Respondeu', proposto: 'Proposto', fechado: 'Fechado', descartado: 'Descartado' };
-        Array.prototype.forEach.call(document.querySelectorAll('#crmFilters button[data-st]'), function (b) {
-            var st = b.getAttribute('data-st');
-            var cnt = st === 'all' ? (c.total || 0) : (c[st] || 0);
-            b.textContent = (ST_LABELS[st] || st) + ' (' + cnt + ')';
-        });
-
-        var q = ($('crmSearch').value || '').trim().toLowerCase();
-                (d.leads || []).filter(function (l) {
-                    if (crmState.filter !== 'all' && l.state !== crmState.filter) return false;
-                    if (q && (l.nome + ' ' + l.nicho + ' ' + l.cidade).toLowerCase().indexOf(q) < 0) return false;
-                    return true;
-                }).forEach(function (l) {
+                (d.leads || []).filter(crmMatchesFilter).forEach(function (l) {
                     if (on) crmState.selectedKeys[l.key] = true;
                     else delete crmState.selectedKeys[l.key];
                 });
@@ -2270,11 +2307,17 @@
         });
     }
 
+    var pollTick = 0;
     setInterval(function () {
+        if (document.hidden) return;
+        pollTick++;
+        if (state.view === 'crm') {
+            if (pollTick % 3 === 0) loadCrm(true);
+            return;
+        }
         loadJobs().then(function () {
             var j = state.selected;
             if (j && (j.Status === 'working' || j.Status === 'pending' || state.counts[j.ID] !== state.places.length)) loadPlaces(false);
         });
-        if (state.view === 'crm') loadCrm();
     }, 3000);
 })();

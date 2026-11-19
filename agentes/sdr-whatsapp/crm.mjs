@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn, execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { gzipSync } from "node:zlib";
 import {
   loadStatus, saveStatus, normalizePhone, getConversation, qualificarLead, callClaude, DAILY_LOG_PATH,
   logActivity, readActivity, getEvolutionState, getAnthropicUsage,
@@ -136,6 +137,23 @@ function sendJson(res, status, data) {
   res.end(JSON.stringify(data));
 }
 
+function sendJsonGz(req, res, status, data) {
+  const json = JSON.stringify(data);
+  const ae = String(req?.headers?.["accept-encoding"] || "");
+  if (json.length > 4096 && ae.includes("gzip")) {
+    const gz = gzipSync(json);
+    res.writeHead(status, {
+      "Content-Type": "application/json; charset=utf-8",
+      "Content-Encoding": "gzip",
+      "Vary": "Accept-Encoding",
+    });
+    res.end(gz);
+    return;
+  }
+  res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
+  res.end(json);
+}
+
 function readJsonBody(req) {
   return new Promise((resolvePromise, reject) => {
     let body = "";
@@ -257,34 +275,40 @@ function loadArchiveRows() {
 let liveJobsCache = { at: 0, rows: [] };
 
 async function loadLiveJobRows() {
-  if (Date.now() - liveJobsCache.at < 20000) return liveJobsCache.rows;
+  if (Date.now() - liveJobsCache.at < 60000) return liveJobsCache.rows;
   try {
     const jobsRes = await fetch("http://127.0.0.1:8080/api/v1/jobs");
     if (!jobsRes.ok) return liveJobsCache.rows;
     const jobs = await jobsRes.json();
-    const out = [];
-    for (const j of (jobs || []).slice(0, 25)) {
-      try {
-        const pr = await fetch(`http://127.0.0.1:8080/api/v1/jobs/${encodeURIComponent(j.ID)}/places`);
-        if (!pr.ok) continue;
-        const places = await pr.json();
-        for (const p of places || []) {
-          if (!p.title) continue;
-          out.push({
-            title: p.title,
-            category: p.category || "",
-            city: p.city || p.borough || "",
-            phone: p.phone || "",
-            website: p.website || "",
-            emails: p.emails || "",
-            rating: Number(p.review_rating || p.rating) || 0,
-            reviews: Number(p.review_count || p.reviews) || 0,
-            link: p.link || "",
-            source: j.Name || "Busca Maps",
-          });
+    const batches = await Promise.all(
+      (jobs || []).slice(0, 25).map(async (j) => {
+        try {
+          const pr = await fetch(`http://127.0.0.1:8080/api/v1/jobs/${encodeURIComponent(j.ID)}/places`);
+          if (!pr.ok) return [];
+          const places = await pr.json();
+          const items = [];
+          for (const p of places || []) {
+            if (!p.title) continue;
+            items.push({
+              title: p.title,
+              category: p.category || "",
+              city: p.city || p.borough || "",
+              phone: p.phone || "",
+              website: p.website || "",
+              emails: p.emails || "",
+              rating: Number(p.review_rating || p.rating) || 0,
+              reviews: Number(p.review_count || p.reviews) || 0,
+              link: p.link || "",
+              source: j.Name || "Busca Maps",
+            });
+          }
+          return items;
+        } catch {
+          return [];
         }
-      } catch {}
-    }
+      })
+    );
+    const out = batches.flat();
     liveJobsCache = { at: Date.now(), rows: out };
     return out;
   } catch {
@@ -559,7 +583,7 @@ export async function handleCrmRequest(req, res) {
     const auditedCount = rawLeads.filter(([, l]) => !!l.siteAudit).length;
     const evoState = await getCachedEvoState();
 
-    sendJson(res, 200, {
+    sendJsonGz(req, res, 200, {
       counts,
       daily: getDailyStats(),
       byNiche: Object.values(byNiche).sort((a, b) => b.total - a.total),
