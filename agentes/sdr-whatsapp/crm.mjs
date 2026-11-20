@@ -318,13 +318,14 @@ async function loadLiveJobRows() {
   }
 }
 
-function computeProspectScore({ temSite, telefone, email, avaliacoes = 0, notaGoogle = 0, siteAudit = null }) {
+function computeProspectScore({ temSite, telefone, email, avaliacoes = 0, notaGoogle = 0, siteAudit = null, semWhatsapp = false }) {
+  const hasWa = Boolean(telefone && !semWhatsapp);
   let score = 0;
   if (!temSite) score += 35;
   else if (siteAudit && typeof siteAudit.score === "number" && siteAudit.score < 70) score += 25;
   else score += 10;
 
-  if (telefone) score += 25;
+  if (hasWa) score += 25;
   if (email) score += 15;
 
   const rev = Number(avaliacoes) || 0;
@@ -340,18 +341,21 @@ function computeProspectScore({ temSite, telefone, email, avaliacoes = 0, notaGo
 
   let oportunidade = "Sem contato";
   let canalIdeal = "none";
-  if (!temSite && telefone) {
+  if (!temSite && hasWa) {
     oportunidade = "WhatsApp + Sem site";
     canalIdeal = "whatsapp";
-  } else if (!temSite && !telefone && email) {
+  } else if (!temSite && !hasWa && email) {
     oportunidade = "E-mail + Sem site";
     canalIdeal = "email";
-  } else if (temSite && telefone) {
+  } else if (temSite && hasWa) {
     oportunidade = siteAudit && siteAudit.score < 70 ? `WhatsApp + Site ${siteAudit.score}/100` : "WhatsApp + Site";
     canalIdeal = "whatsapp";
-  } else if (temSite && !telefone && email) {
+  } else if (temSite && !hasWa && email) {
     oportunidade = "E-mail + Site";
     canalIdeal = "email";
+  } else if (semWhatsapp && !email) {
+    oportunidade = "Fixo s/ WhatsApp";
+    canalIdeal = "none";
   }
 
   return { score, oportunidade, canalIdeal };
@@ -494,6 +498,7 @@ async function buildOverviewBase() {
       avaliacoes: l.avaliacoes || 0,
       notaGoogle: l.notaGoogle || 0,
       siteAudit: l.siteAudit || null,
+      semWhatsapp: !!l.semWhatsapp,
     });
 
     const item = {
@@ -504,6 +509,7 @@ async function buildOverviewBase() {
       nichoGrupo: detectNiche(nicho),
       cidade: l.cidade,
       telefone: normPhone,
+      semWhatsapp: !!l.semWhatsapp,
       email: emailStr,
       instagram: igHandle,
       instagramUrl: igUrl,
@@ -634,9 +640,9 @@ function filterAndSortLeads(leads, { state = "all", opp = "all", tech = "all", q
       } else if (state !== "any" && l.state !== state) {
         return false;
       }
-      if (opp === "wa_nosite" && !(!l.temSite && l.telefone)) return false;
+      if (opp === "wa_nosite" && !(!l.temSite && l.telefone && !l.semWhatsapp)) return false;
       if (opp === "email_nosite" && !(!l.temSite && l.email)) return false;
-      if (opp === "has_wa" && !l.telefone) return false;
+      if (opp === "has_wa" && !(l.telefone && !l.semWhatsapp)) return false;
       if (opp === "has_email" && !l.email) return false;
       if (opp === "nosite" && l.temSite) return false;
       if (techLow && techLow !== "all") {

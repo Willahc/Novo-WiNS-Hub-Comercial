@@ -206,6 +206,15 @@ async function main() {
         if (fresh.leads?.[key]) {
           fresh.leads[key].semWhatsapp = true;
           fresh.leads[key].motivo = "sem_whatsapp";
+          if (fresh.leads[key].state === "na_fila") {
+            const hasEmail = Boolean(fresh.leads[key].email && String(fresh.leads[key].email).includes("@"));
+            if (hasEmail && !fresh.leads[key].emailCadence) {
+              fresh.leads[key].state = "mapeado";
+              fresh.leads[key].canal = "email";
+            } else if (!fresh.leads[key].emailCadence) {
+              fresh.leads[key].state = "descartado";
+            }
+          }
           saveStatus(fresh);
         }
       }
